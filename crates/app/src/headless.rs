@@ -205,7 +205,10 @@ fn wait_for_session(
     while started.elapsed() < Duration::from_secs(300) {
         let procs = platform::processes::running(|n| n.eq_ignore_ascii_case(&name));
         if let Some(pid) = process::is_running(&game, &procs) {
-            platform::processes::wait_for_exit(pid, None);
+            // Only an MO2 this launch started shows the exit-wait dialog; an
+            // already-open MO2 takes the forwarded shortcut in its main window.
+            let mo2_pid = if mo2_was_open { None } else { child.as_ref().map(std::process::Child::id) };
+            wait_for_game(pid, &name, mo2_pid);
             return;
         }
         if !mo2_was_open
@@ -218,5 +221,24 @@ fn wait_for_session(
             return;
         }
         std::thread::sleep(Duration::from_secs(2));
+    }
+}
+
+/// Waits for the game to exit. Meanwhile, MO2 (started with a shortcut) shows
+/// "waiting on an application to close before exiting" over the loading game;
+/// that dialog is minimized once when it appears. MO2 still closes itself
+/// when the game exits, and nothing else about MO2 is touched.
+fn wait_for_game(game_pid: u32, game_exe_name: &str, mo2_pid: Option<u32>) {
+    let started = Instant::now();
+    let mut watch_dialog = mo2_pid.is_some();
+    loop {
+        if platform::processes::wait_for_exit(game_pid, Some(Duration::from_millis(500))) {
+            return;
+        }
+        if let (true, Some(mo2)) = (watch_dialog, mo2_pid) {
+            // Stop after it is minimized once, or after three minutes without it.
+            watch_dialog = !platform::other_windows::minimize_mo2_wait_dialog(mo2, game_exe_name, game_pid)
+                && started.elapsed() < Duration::from_secs(180);
+        }
     }
 }

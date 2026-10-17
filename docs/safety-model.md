@@ -43,6 +43,9 @@ When it changes Steam's `localconfig.vdf`, the launcher:
 - It never passes MO2's unsupported `--multiple` flag.
 - Steam mode only starts Steam's original `%command%`, and only when you choose Without Mods.
 - Process detection uses limited query rights (`PROCESS_QUERY_LIMITED_INFORMATION`). No administrator rights are needed.
+- During a Steam Play launch, the launcher minimizes MO2's "waiting on an application to close before exiting" dialog once, without taking focus from the game.
+  - It finds the dialog by its line for this session's game process, such as `Cyberpunk2077.exe (32576)`, read through UI Automation. Any other MO2 window never matches.
+  - Only the window's minimized state changes. Nothing is clicked, MO2 still closes itself when the game exits, and restoring the dialog works as usual.
 
 ## Not done, by design
 

@@ -80,9 +80,52 @@ pub fn describe_block(gate: &Gate) -> Option<String> {
     }
 }
 
+/// The line MO2's exit-wait dialog shows for each process it waits on, such as
+/// `Cyberpunk2077.exe (32576)`.
+///
+/// Started with a shortcut, MO2 runs the program and then waits to exit,
+/// showing "Mod Organizer is waiting on an application to close before
+/// exiting." Matching the process line rather than that sentence keeps the
+/// check independent of MO2's interface language, and the pid ties it to
+/// this session's game.
+pub fn wait_dialog_entry(game_exe_name: &str, game_pid: u32) -> String {
+    format!("{game_exe_name} ({game_pid})")
+}
+
+/// Whether a window's visible texts are MO2's exit-wait dialog for this game.
+pub fn is_mo2_wait_dialog<S: AsRef<str>>(texts: &[S], game_exe_name: &str, game_pid: u32) -> bool {
+    let entry = wait_dialog_entry(game_exe_name, game_pid);
+    texts.iter().any(|t| t.as_ref().lines().any(|line| line.trim().eq_ignore_ascii_case(&entry)))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn recognizes_mo2_wait_dialog() {
+        // Texts recorded from MO2 2.5.2's dialog during a Steam Play launch.
+        let dialog = [
+            "ModOrganizer",
+            "System Menu Bar",
+            "Close",
+            "Mod Organizer is waiting on an application to close before exiting.",
+            "Cyberpunk2077.exe (32576)",
+            "Exit Now",
+            "Cancel",
+        ];
+        assert!(is_mo2_wait_dialog(&dialog, "Cyberpunk2077.exe", 32576));
+        assert!(is_mo2_wait_dialog(&dialog, "cyberpunk2077.EXE", 32576));
+        // A different game process, or a window without the entry, is left alone.
+        assert!(!is_mo2_wait_dialog(&dialog, "Cyberpunk2077.exe", 1234));
+        let other = ["Mod Organizer", "Problems detected", "Cyberpunk2077.exe (32576) crashed"];
+        assert!(!is_mo2_wait_dialog(&other, "Cyberpunk2077.exe", 32576));
+        assert!(!is_mo2_wait_dialog::<&str>(&[], "Cyberpunk2077.exe", 32576));
+        // The entry may share a text element with the sentence, on its own line.
+        let combined =
+            ["Mod Organizer is waiting on an application to close before exiting.\r\nCyberpunk2077.exe (32576)"];
+        assert!(is_mo2_wait_dialog(&combined, "Cyberpunk2077.exe", 32576));
+    }
 
     fn proc(pid: u32, path: Option<&str>) -> RunningProcess {
         RunningProcess {

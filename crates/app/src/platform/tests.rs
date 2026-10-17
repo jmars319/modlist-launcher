@@ -86,3 +86,46 @@ fn shortcut_names_are_sanitized() {
     assert_eq!(super::shell::sanitize_file_name("The Witcher 3: Wild Hunt?"), "The Witcher 3  Wild Hunt");
     assert_eq!(super::shell::sanitize_file_name("..."), "Modlist");
 }
+
+/// A message box in this test process stands in for MO2's exit-wait dialog:
+/// UI Automation reads its text the same way it reads the Qt dialog.
+#[test]
+fn wait_dialog_is_found_by_text_and_minimized() {
+    use windows::Win32::Foundation::{LPARAM, WPARAM};
+    use windows::Win32::UI::WindowsAndMessaging::{IsIconic, MB_OK, MessageBoxW, PostMessageW, WM_CLOSE};
+    use windows::core::HSTRING;
+
+    let caption = "ModOrganizer test dialog";
+    let shown = std::thread::spawn(move || {
+        let text =
+            HSTRING::from("Mod Organizer is waiting on an application to close before exiting.\nGame.exe (4242)");
+        // SAFETY: a modal message box owned by this thread; closed by WM_CLOSE below.
+        unsafe { MessageBoxW(None, &text, &HSTRING::from(caption), MB_OK) };
+    });
+
+    let pid = std::process::id();
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let mut dialog = None;
+    while dialog.is_none() && Instant::now() < deadline {
+        dialog = super::other_windows::visible_top_level(pid)
+            .into_iter()
+            .find(|&h| super::other_windows::texts(h).iter().any(|t| t == caption));
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    let hwnd = dialog.expect("test dialog did not appear");
+
+    // Wrong game pid: not the dialog for this session, so it stays put.
+    assert!(!super::other_windows::minimize_mo2_wait_dialog(pid, "Game.exe", 1));
+    // SAFETY: querying window state of a window this test created.
+    assert!(!unsafe { IsIconic(hwnd) }.as_bool());
+
+    let texts = super::other_windows::texts(hwnd);
+    assert!(texts.iter().any(|t| t.contains("Game.exe (4242)")), "texts were {texts:?}");
+    assert!(super::other_windows::minimize_mo2_wait_dialog(pid, "Game.exe", 4242));
+    // SAFETY: as above.
+    assert!(unsafe { IsIconic(hwnd) }.as_bool());
+
+    // SAFETY: asks the message box this test created to close.
+    unsafe { PostMessageW(Some(hwnd), WM_CLOSE, WPARAM(0), LPARAM(0)).unwrap() };
+    shown.join().unwrap();
+}
