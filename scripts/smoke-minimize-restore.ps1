@@ -20,6 +20,9 @@ public static class SmokeWin {
   [DllImport("user32.dll")] public static extern bool MoveWindow(IntPtr h, int x, int y, int w, int hh, bool r);
   [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
   [DllImport("user32.dll")] public static extern bool SetProcessDpiAwarenessContext(IntPtr v);
+  [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr h, out RECT r);
+  [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr h, ref POINT p);
+  [StructLayout(LayoutKind.Sequential)] public struct POINT { public int X, Y; }
   [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int w, int hh, uint flags);
   [StructLayout(LayoutKind.Sequential)] public struct RECT { public int L, T, R, B; }
 }
@@ -52,12 +55,16 @@ function KeepOnTop($h) {
     [SmokeWin]::SetWindowPos($h, [IntPtr]-1, 0, 0, 0, 0, 0x0001 -bor 0x0002 -bor 0x0010) | Out-Null  # TOPMOST; NOSIZE|NOMOVE|NOACTIVATE
 }
 
+# Captures only the client area: the window rectangle also includes the
+# invisible resize border, which shows whatever is behind the window.
 function Capture($h) {
     $r = New-Object SmokeWin+RECT
-    [SmokeWin]::GetWindowRect($h, [ref]$r) | Out-Null
+    [SmokeWin]::GetClientRect($h, [ref]$r) | Out-Null
+    $origin = New-Object SmokeWin+POINT
+    [SmokeWin]::ClientToScreen($h, [ref]$origin) | Out-Null
     $bmp = New-Object System.Drawing.Bitmap ($r.R - $r.L), ($r.B - $r.T)
     $g = [System.Drawing.Graphics]::FromImage($bmp)
-    $g.CopyFromScreen($r.L, $r.T, 0, 0, $bmp.Size)
+    $g.CopyFromScreen($origin.X, $origin.Y, 0, 0, $bmp.Size)
     $g.Dispose()
     $bmp
 }
@@ -65,8 +72,7 @@ function Capture($h) {
 function DifferentPercent($a, $b) {
     $w = [Math]::Min($a.Width, $b.Width); $h = [Math]::Min($a.Height, $b.Height)
     $diff = 0; $n = 0
-    # Skip the title bar, whose colour follows window focus.
-    for ($y = 40; $y -lt $h; $y += 6) {
+    for ($y = 0; $y -lt $h; $y += 6) {
         for ($x = 0; $x -lt $w; $x += 6) {
             $c1 = $a.GetPixel($x, $y); $c2 = $b.GetPixel($x, $y); $n++
             if ([Math]::Abs($c1.R - $c2.R) + [Math]::Abs($c1.G - $c2.G) + [Math]::Abs($c1.B - $c2.B) -gt 24) { $diff++ }
