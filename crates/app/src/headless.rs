@@ -1,0 +1,222 @@
+//! Launches that come from a shortcut or from Steam and show no main window.
+
+use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
+
+use modlist_core::config::{Installation, PlayAction};
+use modlist_core::launch::LaunchMode;
+use modlist_core::process::{self, Gate};
+use modlist_core::validate::{self, display_message};
+use slint::ComponentHandle;
+
+use crate::launching::{self, Outcome};
+use crate::state::{AppState, running_mo2};
+use crate::{MessageWindow, SteamChooser, platform};
+
+pub fn show_message(heading: &str, message: &str) {
+    let Ok(w) = MessageWindow::new() else { return };
+    w.set_heading(heading.into());
+    w.set_message(message.into());
+    let weak = w.as_weak();
+    w.on_ok(move || {
+        if let Some(w) = weak.upgrade() {
+            let _ = w.hide();
+        }
+    });
+    let _ = w.run();
+}
+
+fn find<'a>(state: &'a AppState, target: &str) -> Result<&'a Installation, String> {
+    state.config.resolve(target).ok_or_else(|| {
+        format!("\"{target}\" is not in Modlist Launcher anymore. Open the launcher to add it again or update this shortcut.")
+    })
+}
+
+/// `--launch` / `--open` from a per-modlist shortcut.
+pub fn launch(target: &str, mode: LaunchMode) -> i32 {
+    let (state, _) = AppState::load();
+    let inst = match find(&state, target) {
+        Ok(i) => i,
+        Err(e) => {
+            show_message("Modlist not found", &e);
+            return 1;
+        }
+    };
+    let inspection = validate::inspect(inst);
+    let running = running_mo2();
+    match launching::launch(inst, &inspection, mode, &running, &state.config.installations) {
+        Ok(Outcome::Focused) => 0,
+        Ok(Outcome::Started(mut child)) => {
+            state.log(&format!("shortcut launch: {} ({mode:?})", inst.name));
+            if let Some(msg) = platform::launch::early_exit(&mut child, Duration::from_secs(5))
+                .and_then(|s| launching::early_exit_message(s, inst))
+            {
+                show_message("Mod Organizer did not start", &msg);
+                return 1;
+            }
+            0
+        }
+        Err(e) => {
+            state.log(&format!("shortcut launch blocked: {} - {e}", inst.name));
+            show_message(&format!("Can't start {}", inst.name), &e);
+            1
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Choice {
+    Modded,
+    Vanilla,
+    Cancel,
+}
+
+fn choose(name: &str, reason: &str, can_mod: bool, can_vanilla: bool, hero: Option<slint::Image>) -> Choice {
+    let Ok(w) = SteamChooser::new() else { return Choice::Cancel };
+    w.set_name(name.into());
+    w.set_reason(reason.into());
+    w.set_can_mod(can_mod);
+    w.set_can_vanilla(can_vanilla);
+    w.set_has_hero(hero.is_some());
+    w.set_hero(hero.unwrap_or_default());
+    let choice = std::rc::Rc::new(std::cell::Cell::new(Choice::Cancel));
+    for (pick, setter) in [
+        (Choice::Modded, SteamChooser::on_modded as fn(&SteamChooser, _)),
+        (Choice::Vanilla, SteamChooser::on_vanilla as fn(&SteamChooser, _)),
+        (Choice::Cancel, SteamChooser::on_cancel as fn(&SteamChooser, _)),
+    ] {
+        let (choice, weak) = (choice.clone(), w.as_weak());
+        setter(&w, move || {
+            choice.set(pick);
+            if let Some(w) = weak.upgrade() {
+                let _ = w.hide();
+            }
+        });
+    }
+    let _ = w.run();
+    choice.get()
+}
+
+/// `--steam <id> -- %command%`, started by Steam's Play button. Stays alive
+/// until the game exits so Steam tracks the session and syncs saves after.
+pub fn steam(target: &str, original: &[String]) -> i32 {
+    let (state, _) = AppState::load();
+    let can_vanilla = original.first().is_some_and(|p| Path::new(p).is_file());
+    let inst = match find(&state, target) {
+        Ok(i) => i,
+        Err(e) => {
+            return match choose("this game", &e, false, can_vanilla, None) {
+                Choice::Vanilla => run_original(original),
+                _ => 1,
+            };
+        }
+    };
+    let inspection = validate::inspect(inst);
+    let running = running_mo2();
+    let gate = process::gate(&inst.exe_path, &running, &state.config.installations);
+
+    let mut reason = String::new();
+    if !inspection.can_play() {
+        reason = inspection.first_error().map(|e| display_message(e).to_string()).unwrap_or_default();
+    } else if let Some(block) = process::describe_block(&gate) {
+        reason = block;
+    }
+    let can_mod = reason.is_empty();
+    let choice = if !can_mod || platform::shift_held() {
+        let hero = inst
+            .steam_app_id
+            .zip(state.steam.as_ref())
+            .and_then(|(app, s)| s.library_image(app, "library_hero.jpg"))
+            .and_then(|p| slint::Image::load_from_path(&p).ok());
+        choose(&inst.name, &reason, can_mod, can_vanilla, hero)
+    } else {
+        Choice::Modded
+    };
+    state.log(&format!(
+        "steam launch: {} choice={}",
+        inst.name,
+        match choice {
+            Choice::Modded => "modded",
+            Choice::Vanilla => "vanilla",
+            Choice::Cancel => "cancel",
+        }
+    ));
+
+    match choice {
+        Choice::Cancel => 0,
+        Choice::Vanilla => run_original(original),
+        Choice::Modded => {
+            let child =
+                match launching::launch(inst, &inspection, LaunchMode::Play, &running, &state.config.installations) {
+                    Ok(Outcome::Started(c)) => Some(c),
+                    Ok(Outcome::Focused) => None,
+                    Err(e) => {
+                        show_message(&format!("Can't start {}", inst.name), &e);
+                        return 1;
+                    }
+                };
+            wait_for_session(inst, &inspection, child, matches!(gate, Gate::SameInstanceRunning { .. }));
+            0
+        }
+    }
+}
+
+fn run_original(original: &[String]) -> i32 {
+    let Some(program) = original.first() else { return 1 };
+    let program = PathBuf::from(program);
+    let cwd = program.parent().map(Path::to_path_buf).unwrap_or_default();
+    let spec = modlist_core::launch::LaunchSpec { program, args: original[1..].to_vec(), working_directory: cwd };
+    match platform::launch::spawn(&spec) {
+        Ok(mut child) => {
+            let _ = child.wait();
+            0
+        }
+        Err(e) => {
+            show_message("Could not start the game", &e.to_string());
+            1
+        }
+    }
+}
+
+/// Waits for the game that MO2 starts, or for MO2 itself when the Play
+/// action only opens MO2.
+fn wait_for_session(
+    inst: &Installation,
+    inspection: &validate::Inspection,
+    child: Option<std::process::Child>,
+    mo2_was_open: bool,
+) {
+    let game = match &inst.play_action {
+        PlayAction::Executable { title } => {
+            inspection.install.as_ref().and_then(|i| i.executable(title)).map(|e| e.binary.clone())
+        }
+        PlayAction::OpenMo2 => None,
+    };
+    let Some(game) = game else {
+        if let Some(mut c) = child {
+            let _ = c.wait();
+        }
+        return;
+    };
+    let name = game.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    let started = Instant::now();
+    let mut child = child;
+    // Give MO2 up to five minutes to build its virtual file system and start the game.
+    while started.elapsed() < Duration::from_secs(300) {
+        let procs = platform::processes::running(|n| n.eq_ignore_ascii_case(&name));
+        if let Some(pid) = process::is_running(&game, &procs) {
+            platform::processes::wait_for_exit(pid, None);
+            return;
+        }
+        if !mo2_was_open
+            && let Some(c) = child.as_mut()
+            && let Ok(Some(status)) = c.try_wait()
+        {
+            if let Some(msg) = launching::early_exit_message(status, inst) {
+                show_message("Mod Organizer did not start", &msg);
+            }
+            return;
+        }
+        std::thread::sleep(Duration::from_secs(2));
+    }
+}

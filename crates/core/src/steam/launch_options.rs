@@ -1,0 +1,147 @@
+//! Reads and edits `LaunchOptions` in a Steam account's `localconfig.vdf`.
+//!
+//! Edits are surgical: only the bytes of one value change. Steam rewrites
+//! this file while it runs, so callers must only write when Steam is closed.
+
+use std::path::Path;
+
+use super::vdf::{self, Value, VdfError};
+use crate::launch::quote_arg;
+
+const APPS_PATH: [&str; 5] = ["UserLocalConfigStore", "Software", "Valve", "Steam", "apps"];
+
+#[derive(Debug, Clone, PartialEq, thiserror::Error)]
+pub enum LaunchOptionsError {
+    #[error(transparent)]
+    Parse(#[from] VdfError),
+    #[error("this localconfig.vdf has no Software/Valve/Steam/apps section; it was left unchanged")]
+    UnexpectedLayout,
+}
+
+fn apps(doc: &Value) -> Option<&Value> {
+    doc.path(&APPS_PATH)
+}
+
+pub fn get_launch_options(text: &str, app_id: u32) -> Result<String, LaunchOptionsError> {
+    let doc = vdf::parse(text)?;
+    let apps = apps(&doc).ok_or(LaunchOptionsError::UnexpectedLayout)?;
+    Ok(apps.path(&[&app_id.to_string(), "LaunchOptions"]).and_then(Value::as_str).unwrap_or_default().to_string())
+}
+
+/// Returns the new file text with `LaunchOptions` for `app_id` set to `value`.
+pub fn set_launch_options(text: &str, app_id: u32, value: &str) -> Result<String, LaunchOptionsError> {
+    let doc = vdf::parse(text)?;
+    let apps_node = apps(&doc).ok_or(LaunchOptionsError::UnexpectedLayout)?;
+    let quoted = format!("\"{}\"", vdf::escape(value));
+    let id = app_id.to_string();
+
+    let replace = |at: std::ops::Range<usize>, with: &str| {
+        let mut out = String::with_capacity(text.len() + with.len());
+        out.push_str(&text[..at.start]);
+        out.push_str(with);
+        out.push_str(&text[at.end..]);
+        out
+    };
+
+    match apps_node.get(&id) {
+        Some(app @ Value::Obj { close, children, .. }) => {
+            if let Some(Value::Str { span, .. }) = app.get("LaunchOptions") {
+                return Ok(replace(span.clone(), &quoted));
+            }
+            let indent = match children.first() {
+                Some(child) => vdf::line_indent(text, child.start).to_string(),
+                None => format!("{}\t", vdf::line_indent(text, *close)),
+            };
+            let insert_at = text[..*close].rfind('\n').map_or(*close, |i| i + 1);
+            let line = format!("{indent}\"LaunchOptions\"\t\t{quoted}\n");
+            Ok(replace(insert_at..insert_at, &line))
+        }
+        Some(Value::Str { .. }) => Err(LaunchOptionsError::UnexpectedLayout),
+        None => {
+            let Value::Obj { close, children, .. } = apps_node else {
+                return Err(LaunchOptionsError::UnexpectedLayout);
+            };
+            let indent = match children.first() {
+                Some(child) => vdf::line_indent(text, child.start).to_string(),
+                None => format!("{}\t", vdf::line_indent(text, *close)),
+            };
+            let insert_at = text[..*close].rfind('\n').map_or(*close, |i| i + 1);
+            let block = format!("{indent}\"{id}\"\n{indent}{{\n{indent}\t\"LaunchOptions\"\t\t{quoted}\n{indent}}}\n");
+            Ok(replace(insert_at..insert_at, &block))
+        }
+    }
+}
+
+/// The launch options that make Steam's Play button start an installation
+/// through the launcher. Steam replaces `%command%` with the game's own
+/// command, which the launcher keeps for "start unmodded".
+pub fn wrapper_launch_options(launcher_exe: &Path, installation_id: &str) -> String {
+    format!("\"{}\" --steam {} -- %command%", launcher_exe.display(), quote_arg(installation_id))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const SAMPLE: &str = "\"UserLocalConfigStore\"\n{\n\t\"Software\"\n\t{\n\t\t\"Valve\"\n\t\t{\n\t\t\t\"Steam\"\n\t\t\t{\n\t\t\t\t\"apps\"\n\t\t\t\t{\n\t\t\t\t\t\"292030\"\n\t\t\t\t\t{\n\t\t\t\t\t\t\"LastPlayed\"\t\t\"1791973686\"\n\t\t\t\t\t}\n\t\t\t\t\t\"1091500\"\n\t\t\t\t\t{\n\t\t\t\t\t\t\"LaunchOptions\"\t\t\"-skipStartScreen\"\n\t\t\t\t\t\t\"Playtime\"\t\t\"5000\"\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t}\n\t\t}\n\t}\n\t\"friends\"\n\t{\n\t}\n}\n";
+
+    #[test]
+    fn reads_existing_and_missing() {
+        assert_eq!(get_launch_options(SAMPLE, 1091500).unwrap(), "-skipStartScreen");
+        assert_eq!(get_launch_options(SAMPLE, 292030).unwrap(), "");
+        assert_eq!(get_launch_options(SAMPLE, 1).unwrap(), "");
+    }
+
+    #[test]
+    fn replaces_existing_value_only() {
+        let v = wrapper_launch_options(
+            Path::new(r"C:\Users\me\AppData\Local\Programs\Modlist Launcher\modlist-launcher.exe"),
+            "abc-123",
+        );
+        let out = set_launch_options(SAMPLE, 1091500, &v).unwrap();
+        assert_eq!(get_launch_options(&out, 1091500).unwrap(), v);
+        let changed: Vec<_> = SAMPLE.lines().zip(out.lines()).filter(|(a, b)| a != b).collect();
+        assert_eq!(changed.len(), 1);
+        assert_eq!(out.lines().count(), SAMPLE.lines().count());
+    }
+
+    #[test]
+    fn inserts_into_app_without_options() {
+        let out = set_launch_options(SAMPLE, 292030, "--x").unwrap();
+        assert_eq!(get_launch_options(&out, 292030).unwrap(), "--x");
+        assert!(out.contains("\t\t\t\t\t\t\"LaunchOptions\"\t\t\"--x\"\n\t\t\t\t\t}"));
+        assert_eq!(out.lines().count(), SAMPLE.lines().count() + 1);
+        // Everything else is untouched.
+        let restored = out.replace("\t\t\t\t\t\t\"LaunchOptions\"\t\t\"--x\"\n", "");
+        assert_eq!(restored, SAMPLE);
+    }
+
+    #[test]
+    fn creates_missing_app_block() {
+        let out = set_launch_options(SAMPLE, 499450, "-y").unwrap();
+        assert_eq!(get_launch_options(&out, 499450).unwrap(), "-y");
+        assert_eq!(get_launch_options(&out, 1091500).unwrap(), "-skipStartScreen");
+        vdf::parse(&out).unwrap();
+    }
+
+    #[test]
+    fn restoring_previous_value_round_trips() {
+        let changed = set_launch_options(SAMPLE, 1091500, "\"C:\\x y\\l.exe\" --steam a -- %command%").unwrap();
+        let restored = set_launch_options(&changed, 1091500, "-skipStartScreen").unwrap();
+        assert_eq!(restored, SAMPLE);
+    }
+
+    #[test]
+    fn refuses_unexpected_files() {
+        assert_eq!(set_launch_options("\"Other\" { }", 1, "x"), Err(LaunchOptionsError::UnexpectedLayout));
+        assert!(matches!(set_launch_options("\"broken\" {", 1, "x"), Err(LaunchOptionsError::Parse(_))));
+    }
+
+    #[test]
+    fn wrapper_quotes_paths() {
+        assert_eq!(
+            wrapper_launch_options(Path::new(r"C:\Program Files\Modlist Launcher\modlist-launcher.exe"), "6f1c2d36"),
+            r#""C:\Program Files\Modlist Launcher\modlist-launcher.exe" --steam 6f1c2d36 -- %command%"#
+        );
+    }
+}
