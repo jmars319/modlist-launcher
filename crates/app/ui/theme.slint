@@ -7,6 +7,8 @@ export global Theme {
     out property <color> surface: dark ? #2c2c2e : #ffffff;
     out property <color> surface-border: dark ? #ffffff17 : #0000001a;
     out property <color> window-background: dark ? #1c1c1e : #f2f2f7;
+    // One step off window-background; used only to force a full repaint.
+    out property <color> window-background-alt: dark ? #1c1c1f : #f2f2f6;
     out property <color> separator: dark ? #ffffff1f : #0000001a;
     out property <color> ready: dark ? #32d74b : #248a3d;
     out property <color> running: dark ? #0a84ff : #0066cc;

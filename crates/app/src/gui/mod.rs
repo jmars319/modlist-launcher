@@ -115,12 +115,47 @@ pub fn run() -> i32 {
             }
         });
     }
+    let _repaint = repaint_after_restore(&ui);
     match ui.run() {
         Ok(()) => 0,
         Err(e) => {
             crate::headless::show_message("Modlist Launcher stopped", &e.to_string());
             1
         }
+    }
+}
+
+/// Forces full repaints for a moment after the window is restored from
+/// minimized. Slint's software renderer otherwise repaints only changed items
+/// and leaves the rest of the restored window unpainted. Restoring passes
+/// through several intermediate sizes, so a few frames are forced.
+fn repaint_after_restore(ui: &AppWindow) -> slint::Timer {
+    const FORCED_FRAMES: u8 = 4;
+    let weak = ui.as_weak();
+    let mut was_minimized = false;
+    let mut pending = 0u8;
+    let timer = slint::Timer::default();
+    timer.start(slint::TimerMode::Repeated, Duration::from_millis(150), move || {
+        let Some(ui) = weak.upgrade() else { return };
+        let minimized = window_hwnd(&ui).is_some_and(crate::platform::other_windows::is_minimized);
+        if was_minimized && !minimized {
+            pending = FORCED_FRAMES;
+        }
+        was_minimized = minimized;
+        if pending > 0 && !minimized {
+            pending -= 1;
+            ui.set_repaint_flip(!ui.get_repaint_flip());
+            ui.window().request_redraw();
+        }
+    });
+    timer
+}
+
+fn window_hwnd(ui: &AppWindow) -> Option<HWND> {
+    let handle = ui.window().window_handle();
+    match handle.window_handle().ok()?.as_raw() {
+        RawWindowHandle::Win32(h) => Some(HWND(h.hwnd.get() as *mut _)),
+        _ => None,
     }
 }
 
@@ -201,13 +236,7 @@ impl Controller {
     }
 
     pub fn hwnd(&self) -> Option<HWND> {
-        let ui = self.ui()?;
-        let handle = ui.window().window_handle();
-        let raw = handle.window_handle().ok()?.as_raw();
-        match raw {
-            RawWindowHandle::Win32(h) => Some(HWND(h.hwnd.get() as *mut _)),
-            _ => None,
-        }
+        window_hwnd(&self.ui()?)
     }
 
     pub fn banner(&self, text: &str, error: bool) {

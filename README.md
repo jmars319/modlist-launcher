@@ -76,6 +76,14 @@ cargo run -p modlist-launcher
 
 Set `MODLIST_LAUNCHER_DATA` to a scratch folder to keep development runs away from your real configuration.
 
+To check that the window repaints after minimize/restore and maximize/restore, run this after a release build:
+
+```powershell
+./scripts/smoke-minimize-restore.ps1
+```
+
+It uses a throwaway config and fake installs, and screenshots the window after each restore. It exits 1 if a restored window differs from the first screenshot.
+
 Packaging (needs Inno Setup 6 for the installer):
 
 ```powershell
