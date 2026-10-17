@@ -6,11 +6,12 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
+publish.workspace = true
 
 [dependencies]
 modlist-core.workspace = true
 uuid.workspace = true
-slint = { version = "1.18", default-features = false, features = ["std", "compat-1-2", "backend-winit", "renderer-femtovg", "renderer-software", "accessibility", "raw-window-handle-06"] }
+slint = { version = "1.18", default-features = false, features = ["std", "compat-1-2", "backend-winit", "renderer-software", "accessibility", "raw-window-handle-06"] }
 raw-window-handle = "0.6"
 
 [target.'cfg(windows)'.dependencies]

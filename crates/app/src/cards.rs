@@ -117,3 +117,101 @@ pub fn build(input: CardInput<'_>) -> InstallCard {
     }
     card
 }
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use modlist_core::validate::Issue;
+
+    use super::*;
+
+    fn installs() -> Vec<Installation> {
+        let mut a =
+            Installation::new("Project Ultrapunk", PathBuf::from(r"C:\Modlists\ProjectUltrapunk\ModOrganizer.exe"));
+        a.play_action = PlayAction::Executable { title: "Cyberpunk 2077".into() };
+        let b = Installation::new("Witcher 3 Ascended", PathBuf::from(r"C:\Modding\W3\ModOrganizer.exe"));
+        vec![a, b]
+    }
+
+    fn mo2(path: &str) -> RunningProcess {
+        RunningProcess { pid: 42, path: Some(PathBuf::from(path)), name: "ModOrganizer.exe".into() }
+    }
+
+    fn card(inst: &Installation, issues: Vec<Issue>, running: &[RunningProcess], all: &[Installation]) -> InstallCard {
+        let inspection = Inspection { install: None, issues };
+        build(CardInput {
+            inst,
+            inspection: Some(&inspection),
+            art: Art::default(),
+            running,
+            all,
+            starting: false,
+            profiles: ModelRc::default(),
+        })
+    }
+
+    fn issue(severity: Severity, message: &str) -> Issue {
+        Issue { severity, message: message.into() }
+    }
+
+    #[test]
+    fn ready_with_play_action_shows_both_buttons() {
+        let all = installs();
+        let c = card(&all[0], vec![], &[], &all);
+        assert_eq!(c.status, CardStatus::Ready);
+        assert_eq!(c.play_label, "Play");
+        assert!(c.show_open && c.can_play && c.can_open);
+    }
+
+    #[test]
+    fn open_only_installation_has_single_button() {
+        let all = installs();
+        let c = card(&all[1], vec![], &[], &all);
+        assert_eq!(c.play_label, "Open MO2");
+        assert!(!c.show_open && c.can_play);
+    }
+
+    #[test]
+    fn same_instance_running_offers_show() {
+        let all = installs();
+        let c = card(&all[0], vec![], &[mo2(r"C:\Modlists\ProjectUltrapunk\ModOrganizer.exe")], &all);
+        assert_eq!(c.status, CardStatus::Running);
+        assert_eq!(c.open_label, "Show MO2");
+        assert!(c.can_play && c.can_open);
+    }
+
+    #[test]
+    fn other_instance_running_blocks_with_name() {
+        let all = installs();
+        let c = card(&all[1], vec![], &[mo2(r"C:\Modlists\ProjectUltrapunk\ModOrganizer.exe")], &all);
+        assert_eq!(c.status, CardStatus::Blocked);
+        assert!(!c.can_play && !c.can_open);
+        assert!(c.detail.contains("Project Ultrapunk"));
+    }
+
+    #[test]
+    fn missing_install_needs_attention() {
+        let all = installs();
+        let c = card(&all[0], vec![issue(Severity::Error, r"The folder D:\Gone no longer exists.")], &[], &all);
+        assert_eq!(c.status, CardStatus::Attention);
+        assert!(c.detail_is_error && !c.can_play && !c.can_open);
+    }
+
+    #[test]
+    fn play_only_error_still_allows_opening_mo2() {
+        let all = installs();
+        let c = card(&all[0], vec![issue(Severity::Error, r"Play: C:\x.exe was not found.")], &[], &all);
+        assert_eq!(c.status, CardStatus::Attention);
+        assert!(!c.can_play && c.can_open);
+        assert_eq!(c.detail, r"C:\x.exe was not found.");
+    }
+
+    #[test]
+    fn warnings_show_but_do_not_block() {
+        let all = installs();
+        let c = card(&all[0], vec![issue(Severity::Warning, "Profile \"X\" no longer exists.")], &[], &all);
+        assert_eq!(c.status, CardStatus::Ready);
+        assert!(!c.detail_is_error && c.can_play);
+    }
+}
