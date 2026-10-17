@@ -1,0 +1,301 @@
+import { Button, ScrollView, Palette } from "std-widgets.slint";
+import { Theme, Message } from "theme.slint";
+import { CardStatus, InstallCard, ScanRow, Ui, EditState, ScanState, SteamState } from "state.slint";
+import { Card } from "card.slint";
+import { ActionsSheet, ConfirmSheet, EditSheet, ScanSheet, SettingsSheet, SteamSheet } from "sheets.slint";
+
+export { Ui, EditState, ScanState, SteamState, CardStatus, InstallCard, ScanRow, Message }
+
+component Banner inherits Rectangle {
+    in property <string> text;
+    in property <bool> error;
+    callback dismiss();
+    border-radius: 10px;
+    background: (error ? Theme.danger : Palette.accent-background).transparentize(86%);
+    border-width: 1px;
+    border-color: (error ? Theme.danger : Palette.accent-background).transparentize(55%);
+    HorizontalLayout {
+        padding: 10px;
+        padding-left: 16px;
+        spacing: 12px;
+        Text {
+            text: root.text;
+            color: Theme.text;
+            font-size: 13px;
+            wrap: word-wrap;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+            accessible-label: (root.error ? "Error: " : "") + root.text;
+        }
+        VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 0;
+            Button {
+                text: "Dismiss";
+                accessible-label: "Dismiss message";
+                clicked => { root.dismiss(); }
+            }
+        }
+    }
+}
+
+component EmptyState inherits VerticalLayout {
+    alignment: center;
+    spacing: 14px;
+    Text {
+        text: "No modlists yet";
+        font-size: 22px;
+        font-weight: 700;
+        color: Theme.text;
+        horizontal-alignment: center;
+    }
+    Text {
+        text: "Add a portable Mod Organizer 2 installation, or scan a folder that holds your Wabbajack lists.";
+        color: Theme.secondary-text;
+        horizontal-alignment: center;
+        wrap: word-wrap;
+    }
+    HorizontalLayout {
+        alignment: center;
+        spacing: 10px;
+        Button {
+            text: "Scan Folders…";
+            clicked => { Ui.open-scan(); }
+        }
+        Button {
+            text: "Add Installation…";
+            primary: true;
+            clicked => { Ui.add-installation(); }
+        }
+    }
+}
+
+export component AppWindow inherits Window {
+    title: "Modlist Launcher";
+    icon: @image-url("../../../assets/icon-256.png");
+    preferred-width: 1040px;
+    preferred-height: 720px;
+    min-width: 400px;
+    min-height: 460px;
+    background: Theme.window-background;
+    default-font-size: 13px;
+
+    property <bool> modal: Ui.sheet != "";
+    property <length> gutter: 24px;
+    property <length> gap: 20px;
+    property <length> min-card-width: 300px;
+    property <int> columns: max(1, floor((self.width - 2 * gutter + gap) / (min-card-width + gap)));
+    property <length> card-width: (self.width - 2 * gutter - (columns - 1) * gap) / columns;
+    property <length> card-height: 372px;
+
+    changed appearance => { Palette.color-scheme = Ui.appearance == 1 ? ColorScheme.light : Ui.appearance == 2 ? ColorScheme.dark : ColorScheme.unknown; }
+    property <int> appearance: Ui.appearance;
+
+    forward-focus: keys;
+    keys := FocusScope {
+        key-pressed(event) => {
+            if (root.modal) { return reject; }
+            if (event.modifiers.control && event.text == "n") { Ui.add-installation(); return accept; }
+            if (event.modifiers.control && event.text == ",") { Ui.open-settings(); return accept; }
+            reject
+        }
+
+        VerticalLayout {
+            HorizontalLayout {
+                padding: gutter;
+                padding-top: 22px;
+                padding-bottom: 14px;
+                spacing: 10px;
+                VerticalLayout {
+                    alignment: center;
+                    spacing: 2px;
+                    Text {
+                        text: "Modlists";
+                        font-size: 28px;
+                        font-weight: 700;
+                        color: Theme.text;
+                    }
+                    Text {
+                        text: Ui.cards.length == 1 ? "1 installation" : Ui.cards.length + " installations";
+                        font-size: 13px;
+                        color: Theme.secondary-text;
+                    }
+                }
+                Rectangle { horizontal-stretch: 1; }
+                VerticalLayout {
+                    alignment: center;
+                    Button {
+                        text: "Settings";
+                        enabled: !root.modal;
+                        clicked => { Ui.open-settings(); }
+                    }
+                }
+                VerticalLayout {
+                    alignment: center;
+                    Button {
+                        text: "Scan…";
+                        accessible-label: "Scan folders for installations";
+                        enabled: !root.modal;
+                        clicked => { Ui.open-scan(); }
+                    }
+                }
+                VerticalLayout {
+                    alignment: center;
+                    Button {
+                        text: "Add…";
+                        primary: true;
+                        accessible-label: "Add installation";
+                        enabled: !root.modal;
+                        clicked => { Ui.add-installation(); }
+                    }
+                }
+            }
+
+            if Ui.banner-text != "": HorizontalLayout {
+                padding-left: gutter;
+                padding-right: gutter;
+                padding-bottom: 12px;
+                Banner {
+                    text: Ui.banner-text;
+                    error: Ui.banner-error;
+                    dismiss => { Ui.banner-text = ""; }
+                }
+            }
+
+            if Ui.cards.length == 0: EmptyState {
+                vertical-stretch: 1;
+                padding: gutter;
+            }
+
+            if Ui.cards.length > 0: ScrollView {
+                vertical-stretch: 1;
+                content-height: max(self.visible-height, ceil(Ui.cards.length / columns) * (card-height + gap) + gutter);
+                for card[i] in Ui.cards: Card {
+                    x: gutter + mod(i, columns) * (card-width + gap);
+                    y: 6px + floor(i / columns) * (card-height + gap);
+                    width: card-width;
+                    height: card-height;
+                    card: card;
+                    interactive: !root.modal;
+                }
+            }
+        }
+    }
+
+    if Ui.sheet == "edit": EditSheet { init => { self.focus(); } }
+    if Ui.sheet == "scan": ScanSheet { init => { self.focus(); } }
+    if Ui.sheet == "steam": SteamSheet { init => { self.focus(); } }
+    if Ui.sheet == "settings": SettingsSheet { init => { self.focus(); } }
+    if Ui.sheet == "confirm": ConfirmSheet { init => { self.focus(); } }
+    if Ui.sheet == "actions": ActionsSheet { init => { self.focus(); } }
+}
+
+/// Shown when Steam starts a modlist and the user holds Shift, or when the
+/// modded launch cannot go ahead.
+export component SteamChooser inherits Window {
+    in property <string> name;
+    in property <string> reason;
+    in property <bool> can-mod;
+    in property <bool> can-vanilla;
+    in property <bool> has-hero;
+    in property <image> hero;
+    callback modded();
+    callback vanilla();
+    callback cancel();
+
+    title: "Modlist Launcher";
+    icon: @image-url("../../../assets/icon-256.png");
+    width: 440px;
+    background: Theme.surface;
+    default-font-size: 13px;
+    forward-focus: scope;
+
+    scope := FocusScope {
+        key-pressed(event) => {
+            if (event.text == Key.Escape) { root.cancel(); return accept; }
+            reject
+        }
+        VerticalLayout {
+            if root.has-hero: Image {
+                height: 150px;
+                source: root.hero;
+                image-fit: cover;
+                accessible-role: none;
+            }
+            VerticalLayout {
+                padding: 22px;
+                spacing: 12px;
+                Text {
+                    text: "Start " + root.name;
+                    font-size: 20px;
+                    font-weight: 700;
+                    color: Theme.text;
+                    wrap: word-wrap;
+                }
+                Text {
+                    text: root.reason != "" ? root.reason : "Choose how to start the game.";
+                    color: Theme.secondary-text;
+                    wrap: word-wrap;
+                }
+                HorizontalLayout {
+                    spacing: 10px;
+                    alignment: end;
+                    Button {
+                        text: "Cancel";
+                        clicked => { root.cancel(); }
+                    }
+                    Button {
+                        text: "Without Mods";
+                        enabled: root.can-vanilla;
+                        clicked => { root.vanilla(); }
+                    }
+                    Button {
+                        text: "With Mods";
+                        primary: true;
+                        enabled: root.can-mod;
+                        clicked => { root.modded(); }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// A plain message for shortcut and Steam launches, which have no main window.
+export component MessageWindow inherits Window {
+    in property <string> heading;
+    in property <string> message;
+    callback ok();
+
+    title: "Modlist Launcher";
+    icon: @image-url("../../../assets/icon-256.png");
+    width: 440px;
+    background: Theme.surface;
+    default-font-size: 13px;
+    forward-focus: ok-button;
+
+    VerticalLayout {
+        padding: 22px;
+        spacing: 12px;
+        Text {
+            text: root.heading;
+            font-size: 18px;
+            font-weight: 700;
+            color: Theme.text;
+            wrap: word-wrap;
+        }
+        Text {
+            text: root.message;
+            color: Theme.text;
+            wrap: word-wrap;
+        }
+        HorizontalLayout {
+            alignment: end;
+            ok-button := Button {
+                text: "OK";
+                primary: true;
+                clicked => { root.ok(); }
+            }
+        }
+    }
+}

@@ -1,0 +1,214 @@
+import { Button, ComboBox, Palette } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+import { CardStatus, InstallCard, Ui } from "state.slint";
+
+component StatusPill inherits Rectangle {
+    in property <CardStatus> status;
+    in property <string> label;
+    property <color> tint: status == CardStatus.ready ? Theme.ready
+        : status == CardStatus.running || status == CardStatus.starting ? Theme.running
+        : status == CardStatus.blocked ? Theme.warning : Theme.danger;
+    height: 24px;
+    width: row.preferred-width + 20px;
+    border-radius: self.height / 2;
+    background: Theme.dark ? #000000b3 : #ffffffeb;
+    accessible-role: none;
+    row := HorizontalLayout {
+        alignment: center;
+        spacing: 6px;
+        Rectangle {
+            y: (parent.height - self.height) / 2;
+            width: 8px;
+            height: 8px;
+            border-radius: 4px;
+            background: root.tint;
+        }
+        Text {
+            text: root.label;
+            font-size: 12px;
+            font-weight: 600;
+            color: Theme.dark ? #ffffff : #1c1c1e;
+            vertical-alignment: center;
+            accessible-role: none;
+        }
+    }
+}
+
+component Artwork inherits Rectangle {
+    in property <InstallCard> card;
+    clip: true;
+    background: @linear-gradient(135deg, Theme.dark ? #3a3a3c : #e5e5ea 0%, Theme.dark ? #232325 : #f7f7fa 100%);
+    accessible-role: none;
+    if card.has-hero: Image {
+        width: parent.width;
+        height: parent.height;
+        source: card.hero;
+        image-fit: cover;
+        accessible-role: none;
+    }
+    if card.has-hero: Rectangle {
+        background: @linear-gradient(180deg, #00000000 40%, #00000099 100%);
+    }
+    if card.has-logo: Image {
+        x: 16px;
+        y: parent.height - self.height - 14px;
+        height: 56px;
+        width: parent.width * 0.6;
+        source: card.logo;
+        image-fit: contain;
+        horizontal-alignment: left;
+        accessible-role: none;
+    }
+    if !card.has-hero && card.has-icon: Image {
+        width: 72px;
+        height: 72px;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        source: card.icon;
+        image-fit: contain;
+        accessible-role: none;
+    }
+    if !card.has-hero && !card.has-icon && !card.has-logo: Text {
+        text: card.name;
+        font-size: 22px;
+        font-weight: 700;
+        color: Theme.secondary-text;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        wrap: word-wrap;
+        accessible-role: none;
+    }
+}
+
+export component Card inherits Rectangle {
+    in property <InstallCard> card;
+    in property <bool> interactive: true;
+
+    border-radius: Theme.radius;
+    background: Theme.surface;
+    border-width: 1px;
+    border-color: Theme.surface-border;
+    drop-shadow-blur: hover.has-hover ? 26px : 14px;
+    drop-shadow-offset-y: hover.has-hover ? 8px : 3px;
+    drop-shadow-color: Theme.dark ? #00000080 : #0000001c;
+    animate drop-shadow-blur, drop-shadow-offset-y { duration: 160ms; easing: ease-out; }
+
+    accessible-role: groupbox;
+    accessible-label: card.name + ", " + card.game + ", " + card.status-text;
+    accessible-description: card.detail;
+
+    hover := TouchArea { }
+
+    Rectangle {
+        border-radius: Theme.radius;
+        clip: true;
+        VerticalLayout {
+            Artwork {
+                card: root.card;
+                height: 150px;
+            }
+            VerticalLayout {
+                padding: 16px;
+                padding-top: 14px;
+                spacing: 4px;
+                Text {
+                    text: root.card.name;
+                    font-size: 17px;
+                    font-weight: 600;
+                    color: Theme.text;
+                    overflow: elide;
+                    accessible-role: none;
+                }
+                Text {
+                    text: root.card.game;
+                    font-size: 13px;
+                    color: Theme.secondary-text;
+                    overflow: elide;
+                    accessible-role: none;
+                }
+                Rectangle {
+                    height: 34px;
+                    if root.card.detail != "": Text {
+                        width: parent.width;
+                        height: parent.height;
+                        text: root.card.detail;
+                        font-size: 12px;
+                        color: root.card.detail-is-error ? Theme.danger : Theme.secondary-text;
+                        wrap: word-wrap;
+                        overflow: elide;
+                        vertical-alignment: top;
+                    }
+                }
+                ComboBox {
+                    enabled: root.interactive && root.card.profiles.length > 1;
+                    model: root.card.profiles;
+                    current-index: root.card.profile-index;
+                    accessible-label: "Profile for " + root.card.name;
+                    selected(value) => { Ui.profile-selected(root.card.id, self.current-index); }
+                }
+                Rectangle { height: 8px; }
+                HorizontalLayout {
+                    spacing: 8px;
+                    Button {
+                        text: root.card.play-label;
+                        primary: true;
+                        enabled: root.interactive && root.card.can-play;
+                        accessible-label: root.card.play-label + (root.card.show-open ? " " : " for ") + root.card.name;
+                        clicked => { Ui.play(root.card.id); }
+                    }
+                    if root.card.show-open: Button {
+                        text: root.card.open-label;
+                        enabled: root.interactive && root.card.can-open;
+                        accessible-label: root.card.open-label + " for " + root.card.name;
+                        clicked => { Ui.open-mo2(root.card.id); }
+                    }
+                    Button {
+                        text: "•••";
+                        enabled: root.interactive;
+                        accessible-label: "More actions for " + root.card.name;
+                        clicked => { Ui.show-actions(root.card.id); }
+                    }
+                }
+            }
+        }
+    }
+
+    // The software renderer does not clip images to rounded corners, so the
+    // artwork's top corners are capped in the card colour and the border is
+    // redrawn above them.
+    Path {
+        x: 0;
+        y: 0;
+        width: Theme.radius;
+        height: Theme.radius;
+        viewbox-width: 14;
+        viewbox-height: 14;
+        commands: "M 0 0 L 14 0 A 14 14 0 0 0 0 14 Z";
+        fill: Theme.window-background;
+        accessible-role: none;
+    }
+    Path {
+        x: parent.width - self.width;
+        y: 0;
+        width: Theme.radius;
+        height: Theme.radius;
+        viewbox-width: 14;
+        viewbox-height: 14;
+        commands: "M 14 0 L 0 0 A 14 14 0 0 1 14 14 Z";
+        fill: Theme.window-background;
+        accessible-role: none;
+    }
+    Rectangle {
+        border-radius: Theme.radius;
+        border-width: 1px;
+        border-color: Theme.surface-border;
+        accessible-role: none;
+    }
+
+    StatusPill {
+        x: parent.width - self.width - 12px;
+        y: 12px;
+        status: root.card.status;
+        label: root.card.status-text;
+    }
+}

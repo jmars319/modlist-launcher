@@ -1,0 +1,142 @@
+import { Message } from "theme.slint";
+
+export enum CardStatus { ready, running, starting, blocked, attention }
+
+export struct InstallCard {
+    id: string,
+    name: string,
+    game: string,
+    status: CardStatus,
+    status-text: string,
+    detail: string,
+    detail-is-error: bool,
+    play-label: string,
+    can-play: bool,
+    show-open: bool,
+    open-label: string,
+    can-open: bool,
+    profiles: [string],
+    profile-index: int,
+    has-hero: bool,
+    hero: image,
+    has-logo: bool,
+    logo: image,
+    has-icon: bool,
+    icon: image,
+    steam-linked: bool,
+}
+
+export struct ScanRow {
+    checked: bool,
+    selectable: bool,
+    name: string,
+    path: string,
+    note: string,
+    note-is-error: bool,
+}
+
+/// Everything the windows show. Rust owns the data and pushes it here.
+export global Ui {
+    in-out property <[InstallCard]> cards;
+    in-out property <string> banner-text;
+    in-out property <bool> banner-error;
+    /// "", "edit", "scan", "steam", "settings", "confirm", "actions"
+    in-out property <string> sheet;
+    in-out property <int> appearance; // 0 system, 1 light, 2 dark
+    in-out property <bool> close-after-launch;
+    in-out property <string> data-folder;
+    in-out property <string> version;
+
+    // Action sheet for one card
+    in-out property <string> actions-id;
+    in-out property <string> actions-title;
+    in-out property <bool> actions-can-move-left;
+    in-out property <bool> actions-can-move-right;
+    in-out property <bool> actions-has-steam;
+
+    // Confirmation
+    in-out property <string> confirm-title;
+    in-out property <string> confirm-text;
+    in-out property <string> confirm-button;
+    in-out property <bool> confirm-destructive;
+
+    callback play(string);
+    callback open-mo2(string);
+    callback profile-selected(string, int);
+    callback show-actions(string);
+    callback add-installation();
+    callback edit(string);
+    callback remove(string);
+    callback move-by(string, int);
+    callback open-folder(string);
+    callback create-shortcut(string, bool); // id, desktop?
+    callback launcher-shortcut(bool); // desktop?
+    callback steam-setup(string);
+    callback open-scan();
+    callback open-settings();
+    callback settings-changed();
+    callback open-data-folder();
+    callback confirm-accepted();
+    callback close-sheet();
+}
+
+export global EditState {
+    in-out property <bool> is-new;
+    in-out property <string> id;
+    in-out property <string> name;
+    in-out property <string> exe-path;
+    in-out property <string> working-dir;
+    in-out property <[string]> play-options;
+    in-out property <int> play-index;
+    in-out property <[string]> profile-options;
+    in-out property <int> profile-index;
+    in-out property <string> steam-app-id;
+    in-out property <[string]> artwork-options;
+    in-out property <int> artwork-index;
+    in-out property <string> artwork-file;
+    in-out property <[Message]> messages;
+    in-out property <bool> can-save;
+
+    callback changed();
+    callback browse-exe();
+    callback browse-working-dir();
+    callback reset-working-dir();
+    callback browse-artwork();
+    callback save();
+}
+
+export global ScanState {
+    in-out property <[string]> roots;
+    in-out property <[ScanRow]> rows;
+    in-out property <bool> scanning;
+    in-out property <string> status;
+    in-out property <int> selected-count;
+
+    callback add-root();
+    callback remove-root(int);
+    callback start();
+    callback toggle(int, bool);
+    callback add-selected();
+}
+
+export global SteamState {
+    in-out property <string> title;
+    in-out property <string> intro;
+    in-out property <[string]> accounts;
+    in-out property <int> account-index;
+    in-out property <string> app-id;
+    in-out property <string> current;
+    in-out property <string> proposed;
+    in-out property <bool> steam-running;
+    in-out property <bool> hooked;
+    in-out property <string> status;
+    in-out property <bool> status-error;
+    in-out property <bool> can-apply;
+
+    callback account-changed(int);
+    callback app-id-changed();
+    callback recheck();
+    callback apply();
+    callback restore();
+    callback copy();
+}

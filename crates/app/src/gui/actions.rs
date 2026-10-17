@@ -1,0 +1,200 @@
+//! Per-card action sheet: shortcuts, reordering, folder, removal.
+
+use std::path::PathBuf;
+
+use modlist_core::config::{Artwork, PlayAction};
+use slint::ComponentHandle;
+use uuid::Uuid;
+
+use super::{Controller, Shared};
+use crate::platform::shell::{self, Shortcut, ShortcutError, ShortcutPlace};
+use crate::state::{current_exe, parse_id};
+use crate::{AppWindow, Ui};
+
+pub enum Pending {
+    Remove(Uuid),
+    ReplaceShortcut { id: Option<Uuid>, place: ShortcutPlace },
+}
+
+pub fn wire(ui: &AppWindow, c: &Shared) {
+    let g = ui.global::<Ui>();
+    {
+        let c = c.clone();
+        g.on_show_actions(move |id| {
+            if let Some(id) = parse_id(&id) {
+                c.borrow().show_actions(id);
+            }
+        });
+    }
+    {
+        let c = c.clone();
+        g.on_move_by(move |id, delta| {
+            let mut ctl = c.borrow_mut();
+            let Some(id) = parse_id(&id) else { return };
+            if ctl.state.config.move_by(id, delta as isize) {
+                ctl.save_or_report();
+                ctl.refresh_cards();
+            }
+            ctl.show_actions(id);
+        });
+    }
+    {
+        let c = c.clone();
+        g.on_open_folder(move |id| {
+            let ctl = c.borrow();
+            let Some(inst) = parse_id(&id).and_then(|id| ctl.state.config.find(id)) else { return };
+            ctl.close_sheet();
+            if let Err(e) = shell::open_in_explorer(&inst.working_directory) {
+                ctl.banner(&format!("Could not open {}: {e}", inst.working_directory.display()), true);
+            }
+        });
+    }
+    {
+        let c = c.clone();
+        g.on_create_shortcut(move |id, desktop| {
+            let place = if desktop { ShortcutPlace::Desktop } else { ShortcutPlace::StartMenu };
+            c.borrow_mut().shortcut(parse_id(&id), place, false);
+        });
+    }
+    {
+        let c = c.clone();
+        g.on_launcher_shortcut(move |desktop| {
+            let place = if desktop { ShortcutPlace::Desktop } else { ShortcutPlace::StartMenu };
+            c.borrow_mut().shortcut(None, place, false);
+        });
+    }
+    {
+        let c = c.clone();
+        g.on_remove(move |id| {
+            if let Some(id) = parse_id(&id) {
+                c.borrow_mut().ask_remove(id);
+            }
+        });
+    }
+    {
+        let c = c.clone();
+        g.on_confirm_accepted(move || {
+            let mut ctl = c.borrow_mut();
+            match ctl.confirm.take() {
+                Some(Pending::Remove(id)) => ctl.remove(id),
+                Some(Pending::ReplaceShortcut { id, place }) => ctl.shortcut(id, place, true),
+                None => ctl.close_sheet(),
+            }
+        });
+    }
+}
+
+impl Controller {
+    fn show_actions(&self, id: Uuid) {
+        let Some(ui) = self.ui() else { return };
+        let list = &self.state.config.installations;
+        let Some(pos) = list.iter().position(|i| i.id == id) else { return };
+        let g = ui.global::<Ui>();
+        g.set_actions_id(id.to_string().into());
+        g.set_actions_title(list[pos].name.clone().into());
+        g.set_actions_can_move_left(pos > 0);
+        g.set_actions_can_move_right(pos + 1 < list.len());
+        g.set_actions_has_steam(list[pos].steam_hook.is_some());
+        g.set_sheet("actions".into());
+    }
+
+    fn confirm(&mut self, pending: Pending, title: &str, text: &str, button: &str, destructive: bool) {
+        self.confirm = Some(pending);
+        let Some(ui) = self.ui() else { return };
+        let g = ui.global::<Ui>();
+        g.set_confirm_title(title.into());
+        g.set_confirm_text(text.into());
+        g.set_confirm_button(button.into());
+        g.set_confirm_destructive(destructive);
+        g.set_sheet("confirm".into());
+    }
+
+    fn ask_remove(&mut self, id: Uuid) {
+        let Some(inst) = self.state.config.find(id) else { return };
+        let mut text = format!(
+            "{} will be removed from this launcher. The installation at {} is not touched.",
+            inst.name,
+            inst.working_directory.display()
+        );
+        if inst.steam_hook.is_some() {
+            text.push_str(" It is still connected to Steam's Play button. Restore Steam's launch options first (Steam Play Button… > Restore Previous), or Steam's Play button will report that the modlist is missing.");
+        }
+        let title = format!("Remove {}?", inst.name);
+        self.confirm(Pending::Remove(id), &title, &text, "Remove", true);
+    }
+
+    fn remove(&mut self, id: Uuid) {
+        let Some(inst) = self.state.config.remove(id) else { return };
+        if let Artwork::Custom { file } = &inst.artwork
+            && let Ok(path) = self.state.data().resolve(file)
+        {
+            let _ = std::fs::remove_file(path);
+        }
+        self.art.forget(id);
+        self.profile_models.remove(&id);
+        self.state.inspections.remove(&id);
+        self.close_sheet();
+        if self.save_or_report() {
+            self.banner(&format!("Removed {} from the launcher.", inst.name), false);
+        }
+        self.refresh_cards();
+    }
+
+    /// Creates a shortcut to the launcher (`id` = None) or to one modlist.
+    fn shortcut(&mut self, id: Option<Uuid>, place: ShortcutPlace, replace: bool) {
+        let exe = current_exe();
+        let workdir = exe.parent().map(PathBuf::from).unwrap_or_default();
+        let (name, args, icon, description) = match id.and_then(|id| self.state.config.find(id)) {
+            Some(inst) => {
+                let install = self.state.inspections.get(&inst.id).and_then(|i| i.install.as_ref());
+                let icon = match (&inst.play_action, install) {
+                    (PlayAction::Executable { title }, Some(i)) => {
+                        i.executable(title).map(|e| e.binary.clone()).filter(|p| p.is_file())
+                    }
+                    _ => None,
+                }
+                .unwrap_or_else(|| inst.exe_path.clone());
+                (
+                    inst.name.clone(),
+                    format!("--launch {}", inst.id),
+                    icon,
+                    format!("Start {} with Mod Organizer 2", inst.name),
+                )
+            }
+            None if id.is_some() => return,
+            None => {
+                ("Modlist Launcher".to_string(), String::new(), exe.clone(), "Choose a modlist to start".to_string())
+            }
+        };
+        let Some(path) = shell::shortcut_path(place, &name) else {
+            self.banner("The shortcut folder could not be found.", true);
+            return;
+        };
+        let shortcut = Shortcut {
+            target: &exe,
+            arguments: &args,
+            working_directory: &workdir,
+            icon: Some((&icon, 0)),
+            description: &description,
+        };
+        let where_ = if place == ShortcutPlace::Desktop { "desktop" } else { "Start menu" };
+        match shell::create_shortcut(&path, &shortcut, replace) {
+            Ok(()) => {
+                self.close_sheet();
+                self.state.log(&format!("shortcut: {}", path.display()));
+                self.banner(&format!("Added \"{name}\" to the {where_}."), false);
+            }
+            Err(ShortcutError::Exists(p)) => {
+                let text = format!(
+                    "{} already exists. Replace it with a shortcut that starts {name} through Modlist Launcher?",
+                    p.display()
+                );
+                self.confirm(Pending::ReplaceShortcut { id, place }, "Replace shortcut?", &text, "Replace", false);
+            }
+            Err(e) => {
+                self.close_sheet();
+                self.banner(&format!("Could not create the shortcut: {e}"), true);
+            }
+        }
+    }
+}

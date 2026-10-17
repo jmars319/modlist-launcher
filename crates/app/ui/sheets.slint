@@ -1,0 +1,511 @@
+import { Button, CheckBox, ComboBox, LineEdit, ScrollView, Switch } from "std-widgets.slint";
+import { ActionItem, ButtonRow, FieldLabel, Messages, Sheet, Theme } from "theme.slint";
+import { EditState, ScanState, SteamState, Ui } from "state.slint";
+
+component PathField inherits VerticalLayout {
+    in property <string> label;
+    in-out property <string> value;
+    in property <string> button: "Choose…";
+    callback browse();
+    callback edited();
+    spacing: 6px;
+    FieldLabel { text: root.label; }
+    HorizontalLayout {
+        spacing: 8px;
+        LineEdit {
+            text <=> root.value;
+            accessible-label: root.label;
+            edited => { root.edited(); }
+        }
+        Button {
+            text: root.button;
+            accessible-label: root.button + " " + root.label;
+            clicked => { root.browse(); }
+        }
+    }
+}
+
+export component EditSheet inherits Sheet {
+    title: EditState.is-new ? "Add Installation" : "Edit Installation";
+    subtitle: "The launcher only reads this installation. Nothing inside it is changed.";
+    panel-width: 600px;
+    close => { Ui.close-sheet(); }
+    forward-focus: name-field;
+
+    VerticalLayout {
+        spacing: 6px;
+        FieldLabel { text: "Name"; }
+        name-field := LineEdit {
+            text <=> EditState.name;
+            placeholder-text: "Shown on the card";
+            accessible-label: "Name";
+            edited => { EditState.changed(); }
+        }
+    }
+    PathField {
+        label: "ModOrganizer.exe";
+        value <=> EditState.exe-path;
+        browse => { EditState.browse-exe(); }
+        edited => { EditState.changed(); }
+    }
+    VerticalLayout {
+        spacing: 6px;
+        FieldLabel { text: "Working directory"; }
+        HorizontalLayout {
+            spacing: 8px;
+            LineEdit {
+                text <=> EditState.working-dir;
+                accessible-label: "Working directory";
+                edited => { EditState.changed(); }
+            }
+            Button {
+                text: "Use Installation Folder";
+                clicked => { EditState.reset-working-dir(); }
+            }
+            Button {
+                text: "Choose…";
+                accessible-label: "Choose working directory";
+                clicked => { EditState.browse-working-dir(); }
+            }
+        }
+    }
+    HorizontalLayout {
+        spacing: 12px;
+        VerticalLayout {
+            spacing: 6px;
+            FieldLabel { text: "Play button runs"; }
+            ComboBox {
+                model: EditState.play-options;
+                current-index <=> EditState.play-index;
+                accessible-label: "Play button runs";
+                selected => { EditState.changed(); }
+            }
+        }
+        VerticalLayout {
+            spacing: 6px;
+            FieldLabel { text: "Profile"; }
+            ComboBox {
+                model: EditState.profile-options;
+                current-index <=> EditState.profile-index;
+                accessible-label: "Profile";
+                selected => { EditState.changed(); }
+            }
+        }
+    }
+    HorizontalLayout {
+        spacing: 12px;
+        VerticalLayout {
+            spacing: 6px;
+            FieldLabel { text: "Artwork"; }
+            HorizontalLayout {
+                spacing: 8px;
+                ComboBox {
+                    model: EditState.artwork-options;
+                    current-index <=> EditState.artwork-index;
+                    accessible-label: "Artwork";
+                    selected => { EditState.changed(); }
+                }
+                Button {
+                    text: "Image…";
+                    accessible-label: "Choose a custom artwork image";
+                    clicked => { EditState.browse-artwork(); }
+                }
+            }
+        }
+        VerticalLayout {
+            spacing: 6px;
+            max-width: 160px;
+            FieldLabel { text: "Steam app ID"; }
+            LineEdit {
+                text <=> EditState.steam-app-id;
+                placeholder-text: "Optional";
+                input-type: number;
+                accessible-label: "Steam app ID";
+                edited => { EditState.changed(); }
+            }
+        }
+    }
+    Messages { items: EditState.messages; }
+    ButtonRow {
+        Button {
+            text: "Cancel";
+            clicked => { Ui.close-sheet(); }
+        }
+        Button {
+            text: EditState.is-new ? "Add" : "Save";
+            primary: true;
+            enabled: EditState.can-save;
+            clicked => { EditState.save(); }
+        }
+    }
+}
+
+export component ScanSheet inherits Sheet {
+    title: "Scan for Installations";
+    subtitle: "Looks for portable Mod Organizer 2 folders. Nothing is added until you choose.";
+    panel-width: 640px;
+    close => { Ui.close-sheet(); }
+    forward-focus: add-folder;
+
+    FieldLabel { text: "Folders to scan"; }
+    VerticalLayout {
+        spacing: 4px;
+        if ScanState.roots.length == 0: Text {
+            text: "No folders yet. Add the folders that hold your modlists, such as C:\\Modlists.";
+            font-size: 12px;
+            color: Theme.secondary-text;
+            wrap: word-wrap;
+        }
+        for root-path[i] in ScanState.roots: HorizontalLayout {
+            spacing: 8px;
+            Text {
+                text: root-path;
+                vertical-alignment: center;
+                color: Theme.text;
+                overflow: elide;
+            }
+            Button {
+                text: "Remove";
+                accessible-label: "Remove " + root-path;
+                enabled: !ScanState.scanning;
+                clicked => { ScanState.remove-root(i); }
+            }
+        }
+    }
+    HorizontalLayout {
+        spacing: 8px;
+        alignment: start;
+        add-folder := Button {
+            text: "Add Folder…";
+            enabled: !ScanState.scanning;
+            clicked => { ScanState.add-root(); }
+        }
+        Button {
+            text: ScanState.scanning ? "Scanning…" : "Scan";
+            primary: ScanState.rows.length == 0;
+            enabled: !ScanState.scanning && ScanState.roots.length > 0;
+            clicked => { ScanState.start(); }
+        }
+    }
+    if ScanState.status != "": Text {
+        text: ScanState.status;
+        font-size: 12px;
+        color: Theme.secondary-text;
+        wrap: word-wrap;
+    }
+    if ScanState.rows.length > 0: ScrollView {
+        min-height: 120px;
+        preferred-height: min(320px, ScanState.rows.length * 64px);
+        VerticalLayout {
+            spacing: 2px;
+            for row[i] in ScanState.rows: HorizontalLayout {
+                padding: 6px;
+                spacing: 10px;
+                CheckBox {
+                    checked: row.checked;
+                    enabled: row.selectable && !ScanState.scanning;
+                    text: "";
+                    accessible-label: "Add " + row.name;
+                    accessible-description: row.path + ". " + row.note;
+                    toggled => { ScanState.toggle(i, self.checked); }
+                }
+                VerticalLayout {
+                    spacing: 2px;
+                    Text {
+                        text: row.name;
+                        font-weight: 600;
+                        color: Theme.text;
+                        accessible-role: none;
+                    }
+                    Text {
+                        text: row.path;
+                        font-size: 12px;
+                        color: Theme.secondary-text;
+                        overflow: elide;
+                        accessible-role: none;
+                    }
+                    if row.note != "": Text {
+                        text: row.note;
+                        font-size: 12px;
+                        color: row.note-is-error ? Theme.danger : Theme.secondary-text;
+                        wrap: word-wrap;
+                        accessible-role: none;
+                    }
+                }
+            }
+        }
+    }
+    ButtonRow {
+        Button {
+            text: "Close";
+            clicked => { Ui.close-sheet(); }
+        }
+        Button {
+            text: ScanState.selected-count > 0 ? "Add " + ScanState.selected-count + " Selected" : "Add Selected";
+            primary: ScanState.selected-count > 0;
+            enabled: ScanState.selected-count > 0 && !ScanState.scanning;
+            clicked => { ScanState.add-selected(); }
+        }
+    }
+}
+
+export component SteamSheet inherits Sheet {
+    title: SteamState.title;
+    subtitle: SteamState.intro;
+    panel-width: 640px;
+    close => { Ui.close-sheet(); }
+
+    HorizontalLayout {
+        spacing: 12px;
+        VerticalLayout {
+            spacing: 6px;
+            FieldLabel { text: "Steam account"; }
+            ComboBox {
+                model: SteamState.accounts;
+                current-index <=> SteamState.account-index;
+                accessible-label: "Steam account";
+                selected => { SteamState.account-changed(self.current-index); }
+            }
+        }
+        VerticalLayout {
+            spacing: 6px;
+            max-width: 160px;
+            FieldLabel { text: "Steam app ID"; }
+            LineEdit {
+                text <=> SteamState.app-id;
+                input-type: number;
+                accessible-label: "Steam app ID";
+                edited => { SteamState.app-id-changed(); }
+            }
+        }
+    }
+    VerticalLayout {
+        spacing: 6px;
+        FieldLabel { text: "Current launch options"; }
+        Text {
+            text: SteamState.current == "" ? "(none)" : SteamState.current;
+            font-size: 12px;
+            font-family: "Consolas";
+            color: Theme.text;
+            wrap: word-wrap;
+            accessible-label: "Current launch options: " + (SteamState.current == "" ? "none" : SteamState.current);
+        }
+    }
+    VerticalLayout {
+        spacing: 6px;
+        FieldLabel { text: "Launch options for the Play button"; }
+        Text {
+            text: SteamState.proposed;
+            font-size: 12px;
+            font-family: "Consolas";
+            color: Theme.text;
+            wrap: word-wrap;
+            accessible-label: "New launch options: " + SteamState.proposed;
+        }
+    }
+    Text {
+        text: "Pressing Play in Steam will start this modlist. Hold Shift while pressing Play to choose between modded and unmodded. Your previous launch options are kept so they can be restored.";
+        font-size: 12px;
+        color: Theme.secondary-text;
+        wrap: word-wrap;
+    }
+    if SteamState.steam-running: Rectangle {
+        border-radius: 10px;
+        background: Theme.warning.transparentize(85%);
+        HorizontalLayout {
+            padding: 12px;
+            spacing: 10px;
+            Text {
+                text: "Steam is running. Exit Steam completely (Steam menu > Exit) before applying, or Steam will overwrite the change.";
+                font-size: 12px;
+                color: Theme.text;
+                wrap: word-wrap;
+                vertical-alignment: center;
+            }
+            Button {
+                text: "Check Again";
+                clicked => { SteamState.recheck(); }
+            }
+        }
+    }
+    if SteamState.status != "": Text {
+        text: SteamState.status;
+        font-size: 12px;
+        color: SteamState.status-error ? Theme.danger : Theme.ready;
+        wrap: word-wrap;
+    }
+    ButtonRow {
+        Button {
+            text: "Copy";
+            accessible-label: "Copy launch options to the clipboard";
+            clicked => { SteamState.copy(); }
+        }
+        if SteamState.hooked: Button {
+            text: "Restore Previous";
+            enabled: !SteamState.steam-running;
+            clicked => { SteamState.restore(); }
+        }
+        Rectangle { horizontal-stretch: 1; }
+        Button {
+            text: "Close";
+            clicked => { Ui.close-sheet(); }
+        }
+        Button {
+            text: "Apply";
+            primary: true;
+            enabled: SteamState.can-apply && !SteamState.steam-running;
+            clicked => { SteamState.apply(); }
+        }
+    }
+}
+
+export component SettingsSheet inherits Sheet {
+    title: "Settings";
+    close => { Ui.close-sheet(); }
+
+    HorizontalLayout {
+        spacing: 12px;
+        Text {
+            text: "Appearance";
+            vertical-alignment: center;
+            color: Theme.text;
+        }
+        ComboBox {
+            model: ["System", "Light", "Dark"];
+            current-index <=> Ui.appearance;
+            accessible-label: "Appearance";
+            selected => { Ui.settings-changed(); }
+        }
+    }
+    Switch {
+        text: "Close the launcher after starting a modlist";
+        checked <=> Ui.close-after-launch;
+        toggled => { Ui.settings-changed(); }
+    }
+    Rectangle { height: 1px; background: Theme.separator; }
+    FieldLabel { text: "Shortcuts to this launcher"; }
+    HorizontalLayout {
+        spacing: 8px;
+        alignment: start;
+        Button {
+            text: "Add to Desktop";
+            accessible-label: "Create a desktop shortcut to Modlist Launcher";
+            clicked => { Ui.launcher-shortcut(true); }
+        }
+        Button {
+            text: "Add to Start Menu";
+            accessible-label: "Add Modlist Launcher to the Start menu";
+            clicked => { Ui.launcher-shortcut(false); }
+        }
+    }
+    Rectangle { height: 1px; background: Theme.separator; }
+    FieldLabel { text: "Launcher data"; }
+    HorizontalLayout {
+        spacing: 8px;
+        Text {
+            text: Ui.data-folder;
+            font-size: 12px;
+            color: Theme.secondary-text;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+        Button {
+            text: "Open Folder";
+            accessible-label: "Open the launcher data folder";
+            clicked => { Ui.open-data-folder(); }
+        }
+    }
+    Text {
+        text: "Modlist Launcher " + Ui.version + " · GPL-3.0 · No telemetry, no network access. Not affiliated with Mod Organizer 2 or Wabbajack.";
+        font-size: 11px;
+        color: Theme.secondary-text;
+        wrap: word-wrap;
+    }
+    ButtonRow {
+        Button {
+            text: "Done";
+            primary: true;
+            clicked => { Ui.close-sheet(); }
+        }
+    }
+}
+
+export component ConfirmSheet inherits Sheet {
+    title: Ui.confirm-title;
+    panel-width: 460px;
+    close => { Ui.close-sheet(); }
+    forward-focus: cancel;
+
+    Text {
+        text: Ui.confirm-text;
+        color: Theme.text;
+        wrap: word-wrap;
+    }
+    ButtonRow {
+        cancel := Button {
+            text: "Cancel";
+            clicked => { Ui.close-sheet(); }
+        }
+        Button {
+            text: Ui.confirm-button;
+            primary: !Ui.confirm-destructive;
+            clicked => { Ui.confirm-accepted(); }
+        }
+    }
+}
+
+export component ActionsSheet inherits Sheet {
+    title: Ui.actions-title;
+    panel-width: 380px;
+    close => { Ui.close-sheet(); }
+    forward-focus: first;
+
+    VerticalLayout {
+        spacing: 2px;
+        first := ActionItem {
+            text: "Edit…";
+            detail: "Name, paths, Play button, profile, artwork";
+            clicked => { Ui.edit(Ui.actions-id); }
+        }
+        ActionItem {
+            text: "Steam Play Button…";
+            detail: Ui.actions-has-steam ? "Connected. Change or restore." : "Start this modlist from Steam";
+            clicked => { Ui.steam-setup(Ui.actions-id); }
+        }
+        ActionItem {
+            text: "Add to Desktop";
+            detail: "A shortcut that starts this modlist directly";
+            clicked => { Ui.create-shortcut(Ui.actions-id, true); }
+        }
+        ActionItem {
+            text: "Add to Start Menu";
+            clicked => { Ui.create-shortcut(Ui.actions-id, false); }
+        }
+        ActionItem {
+            text: "Show in File Explorer";
+            clicked => { Ui.open-folder(Ui.actions-id); }
+        }
+        ActionItem {
+            text: "Move Earlier";
+            enabled: Ui.actions-can-move-left;
+            clicked => { Ui.move-by(Ui.actions-id, -1); }
+        }
+        ActionItem {
+            text: "Move Later";
+            enabled: Ui.actions-can-move-right;
+            clicked => { Ui.move-by(Ui.actions-id, 1); }
+        }
+        ActionItem {
+            text: "Remove from Launcher…";
+            detail: "The installation itself is not touched";
+            destructive: true;
+            clicked => { Ui.remove(Ui.actions-id); }
+        }
+    }
+    ButtonRow {
+        Button {
+            text: "Cancel";
+            clicked => { Ui.close-sheet(); }
+        }
+    }
+}
