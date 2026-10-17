@@ -1,0 +1,113 @@
+# Visual smoke test for the launcher window repainting after it is minimized
+# and restored, and after maximize/restore. Runs the app against an empty,
+# throwaway data folder, so no real configuration or MO2 install is touched.
+# Exits 1 if a restored window differs from the first screenshot.
+#
+#   ./scripts/smoke-minimize-restore.ps1 [-Exe target\release\modlist-launcher.exe]
+param(
+    [string] $Exe = (Join-Path $PSScriptRoot '..\target\release\modlist-launcher.exe'),
+    [int] $Cycles = 3,
+    [int] $MinimizedMs = 3000,
+    [double] $MaxDifferentPercent = 1.0
+)
+$ErrorActionPreference = 'Stop'
+Add-Type -AssemblyName System.Drawing
+Add-Type @"
+using System; using System.Runtime.InteropServices;
+public static class SmokeWin {
+  [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int c);
+  [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
+  [DllImport("user32.dll")] public static extern bool MoveWindow(IntPtr h, int x, int y, int w, int hh, bool r);
+  [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
+  [DllImport("user32.dll")] public static extern bool SetProcessDpiAwarenessContext(IntPtr v);
+  [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int w, int hh, uint flags);
+  [StructLayout(LayoutKind.Sequential)] public struct RECT { public int L, T, R, B; }
+}
+"@
+[SmokeWin]::SetProcessDpiAwarenessContext([IntPtr]-4) | Out-Null
+
+$work = Join-Path ([IO.Path]::GetTempPath()) "modlist-smoke-$PID"
+$data = Join-Path $work 'data'
+New-Item -ItemType Directory -Force $data | Out-Null
+
+# Two fake portable installs so the window shows cards; the bug only appears
+# when there are items to repaint. ModOrganizer.exe is an empty file that is
+# never run: the test only minimizes and restores the launcher window.
+$installs = foreach ($name in 'Smoke List One', 'Smoke List Two') {
+    $root = Join-Path $work $name
+    New-Item -ItemType Directory -Force (Join-Path $root 'profiles\Default') | Out-Null
+    Set-Content -Path (Join-Path $root 'ModOrganizer.exe') -Value '' -NoNewline
+    Set-Content -Path (Join-Path $root 'ModOrganizer.ini') -Value "[General]`ngameName=Smoke Test Game`n"
+    @{ id = [guid]::NewGuid().ToString(); name = $name; exePath = (Join-Path $root 'ModOrganizer.exe'); workingDirectory = $root }
+}
+@{ schemaVersion = 1; installations = @($installs) } | ConvertTo-Json -Depth 4 | Set-Content (Join-Path $data 'config.json')
+
+$psi = [System.Diagnostics.ProcessStartInfo]::new((Resolve-Path $Exe))
+$psi.Environment['MODLIST_LAUNCHER_DATA'] = $data
+$p = [System.Diagnostics.Process]::Start($psi)
+
+# Background scripts cannot take the foreground, so keep the window on top
+# while capturing; otherwise other windows end up in the screenshots.
+function KeepOnTop($h) {
+    [SmokeWin]::SetWindowPos($h, [IntPtr]-1, 0, 0, 0, 0, 0x0001 -bor 0x0002 -bor 0x0010) | Out-Null  # TOPMOST; NOSIZE|NOMOVE|NOACTIVATE
+}
+
+function Capture($h) {
+    $r = New-Object SmokeWin+RECT
+    [SmokeWin]::GetWindowRect($h, [ref]$r) | Out-Null
+    $bmp = New-Object System.Drawing.Bitmap ($r.R - $r.L), ($r.B - $r.T)
+    $g = [System.Drawing.Graphics]::FromImage($bmp)
+    $g.CopyFromScreen($r.L, $r.T, 0, 0, $bmp.Size)
+    $g.Dispose()
+    $bmp
+}
+
+function DifferentPercent($a, $b) {
+    $w = [Math]::Min($a.Width, $b.Width); $h = [Math]::Min($a.Height, $b.Height)
+    $diff = 0; $n = 0
+    # Skip the title bar, whose colour follows window focus.
+    for ($y = 40; $y -lt $h; $y += 6) {
+        for ($x = 0; $x -lt $w; $x += 6) {
+            $c1 = $a.GetPixel($x, $y); $c2 = $b.GetPixel($x, $y); $n++
+            if ([Math]::Abs($c1.R - $c2.R) + [Math]::Abs($c1.G - $c2.G) + [Math]::Abs($c1.B - $c2.B) -gt 24) { $diff++ }
+        }
+    }
+    100.0 * $diff / [Math]::Max(1, $n)
+}
+
+$failed = $false
+try {
+    $h = [IntPtr]::Zero
+    for ($i = 0; $i -lt 50 -and $h -eq [IntPtr]::Zero; $i++) { Start-Sleep -Milliseconds 200; $p.Refresh(); $h = $p.MainWindowHandle }
+    if ($h -eq [IntPtr]::Zero) { throw 'the launcher window did not appear' }
+    [SmokeWin]::MoveWindow($h, 80, 80, 1000, 700, $true) | Out-Null
+    [SmokeWin]::SetForegroundWindow($h) | Out-Null
+    KeepOnTop $h
+    Start-Sleep -Milliseconds 1500
+    $baseline = Capture $h
+    $baseline.Save((Join-Path $work 'baseline.png'))
+
+    $steps = @()
+    for ($c = 1; $c -le $Cycles; $c++) { $steps += @{ Name = "minimize-restore-$c"; Show = 6; Wait = $MinimizedMs } }
+    $steps += @{ Name = 'maximize-restore'; Show = 3; Wait = 1500 }
+    foreach ($step in $steps) {
+        [SmokeWin]::ShowWindow($h, $step.Show) | Out-Null
+        Start-Sleep -Milliseconds $step.Wait
+        [SmokeWin]::ShowWindow($h, 9) | Out-Null   # SW_RESTORE
+        [SmokeWin]::SetForegroundWindow($h) | Out-Null
+        KeepOnTop $h
+        Start-Sleep -Milliseconds 1200
+        $shot = Capture $h
+        $shot.Save((Join-Path $work "$($step.Name).png"))
+        $pct = DifferentPercent $baseline $shot
+        $shot.Dispose()
+        $ok = $pct -le $MaxDifferentPercent
+        if (-not $ok) { $failed = $true }
+        '{0,-20} {1,6:N2}% different  {2}' -f $step.Name, $pct, $(if ($ok) { 'ok' } else { 'FAIL' })
+    }
+} finally {
+    if (-not $p.HasExited) { $p.Kill(); $p.WaitForExit() }
+}
+"Screenshots: $work"
+if ($failed) { exit 1 }
+exit 0

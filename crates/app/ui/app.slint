@@ -92,6 +92,17 @@ export component AppWindow inherits Window {
     property <int> appearance: Ui.appearance;
 
     forward-focus: keys;
+
+    // After a restore from minimized, the software renderer's partial repaint
+    // left everything outside changed items unpainted. Flipping this flag
+    // (from Rust) changes the full-window rectangle's colour by one step,
+    // which marks the whole window dirty and repaints all of it.
+    in property <bool> repaint-flip;
+    Rectangle {
+        background: root.repaint-flip ? Theme.window-background-alt : Theme.window-background;
+        accessible-role: none;
+    }
+
     keys := FocusScope {
         key-pressed(event) => {
             if (root.modal) { return reject; }

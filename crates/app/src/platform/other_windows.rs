@@ -72,6 +72,11 @@ pub fn minimize_mo2_wait_dialog(mo2_pid: u32, game_exe_name: &str, game_pid: u32
         .is_some_and(minimize_quietly)
 }
 
+pub fn is_minimized(hwnd: HWND) -> bool {
+    // SAFETY: plain window-state query.
+    unsafe { IsIconic(hwnd).as_bool() }
+}
+
 /// Minimizes a window without activating anything, so a game in the
 /// foreground keeps focus.
 pub fn minimize_quietly(hwnd: HWND) -> bool {
