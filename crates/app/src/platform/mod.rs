@@ -5,6 +5,7 @@ pub mod clipboard;
 pub mod dialogs;
 pub mod icons;
 pub mod launch;
+pub mod other_windows;
 pub mod processes;
 pub mod shell;
 pub mod steam;
