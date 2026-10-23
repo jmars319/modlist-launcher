@@ -179,6 +179,27 @@ impl Controller {
         let acct = self.selected_account().cloned().ok_or("Choose a Steam account.")?;
         let app = self.selected_app().ok_or("Enter the game's Steam app ID.")?;
         let proposed = steam::wrapper_launch_options(&current_exe(), &id.to_string());
+
+        // Moving the connection to another game or account: put the old
+        // game's launch options back first, or its Play button would keep
+        // pointing here with nothing left to undo it.
+        let old = self.state.config.find(id).and_then(|i| i.steam_hook.clone());
+        if let Some(old) = old.filter(|h| h.account_id != acct.account_id || h.app_id != app) {
+            crate::steam_hooks::restore(&old, self.state.steam.as_ref(), self.state.data(), false, |l| {
+                self.state.log(l)
+            })
+            .map_err(|e| {
+                format!(
+                    "Steam app {}'s launch options could not be put back first, so nothing was changed: {e}",
+                    old.app_id
+                )
+            })?;
+            if let Some(inst) = self.state.config.find_mut(id) {
+                inst.steam_hook = None;
+            }
+            self.save_or_report();
+        }
+
         let text =
             std::fs::read_to_string(&acct.localconfig).map_err(|e| format!("Could not read Steam's settings: {e}"))?;
         let current = steam::get_launch_options(&text, app).map_err(|e| e.to_string())?;
@@ -210,11 +231,12 @@ impl Controller {
             previous_launch_options: previous,
             applied_launch_options: proposed,
         });
-        if inst.steam_app_id.is_none() {
-            inst.steam_app_id = Some(app);
-        }
+        // The app chosen here is the one Steam starts, so it is also the one
+        // the card's artwork should come from.
+        inst.steam_app_id = Some(app);
         self.save_or_report();
         self.refresh_cards();
+        self.refresh_orphans();
         Ok("Done. Start Steam and press Play. Hold Shift while pressing Play to choose with or without mods.".into())
     }
 
@@ -234,6 +256,7 @@ impl Controller {
         }
         self.save_or_report();
         self.refresh_cards();
+        self.refresh_orphans();
         Ok(match outcome {
             crate::steam_hooks::Restored::Restored => "Restored Steam's previous launch options.",
             crate::steam_hooks::Restored::LeftAsIs => {
