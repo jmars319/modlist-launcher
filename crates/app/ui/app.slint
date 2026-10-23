@@ -103,11 +103,35 @@ export component AppWindow inherits Window {
         accessible-role: none;
     }
 
+    function focus-card(target: int) -> EventResult {
+        if (target < 0 || target >= Ui.cards.length || target == Ui.focused-card) {
+            return accept;
+        }
+        Ui.focus-target = target;
+        Ui.focus-serial += 1;
+        accept
+    }
+
     keys := FocusScope {
         key-pressed(event) => {
             if (root.modal) { return reject; }
             if (event.modifiers.control && event.text == "n") { Ui.add-installation(); return accept; }
             if (event.modifiers.control && event.text == ",") { Ui.open-settings(); return accept; }
+            // Arrow keys move between cards while focus is inside one.
+            if (Ui.focused-card >= 0 && !event.modifiers.control && !event.modifiers.alt) {
+                if (event.text == Key.LeftArrow) { return root.focus-card(Ui.focused-card - 1); }
+                if (event.text == Key.RightArrow) { return root.focus-card(Ui.focused-card + 1); }
+                if (event.text == Key.UpArrow) { return root.focus-card(Ui.focused-card - root.columns); }
+                if (event.text == Key.DownArrow) {
+                    // Into a shorter last row: land on its last card.
+                    if (floor(Ui.focused-card / root.columns) < floor((Ui.cards.length - 1) / root.columns)) {
+                        return root.focus-card(min(Ui.focused-card + root.columns, Ui.cards.length - 1));
+                    }
+                    return accept;
+                }
+                if (event.text == Key.Home) { return root.focus-card(0); }
+                if (event.text == Key.End) { return root.focus-card(Ui.cards.length - 1); }
+            }
             reject
         }
 
@@ -180,6 +204,18 @@ export component AppWindow inherits Window {
 
             if Ui.cards.length > 0: ScrollView {
                 vertical-stretch: 1;
+                // Keeps the card that arrow keys moved to in view.
+                property <int> focus-serial: Ui.focus-serial;
+                changed focus-serial => {
+                    if (Ui.focus-target >= 0) {
+                        let top = 6px + floor(Ui.focus-target / root.columns) * (root.card-height + root.gap);
+                        if (top + self.content-y < 0) {
+                            self.content-y = -top;
+                        } else if (top + root.card-height + self.content-y > self.visible-height) {
+                            self.content-y = -(top + root.card-height - self.visible-height);
+                        }
+                    }
+                }
                 content-height: max(self.visible-height, ceil(Ui.cards.length / columns) * (card-height + gap) + gutter);
                 for card[i] in Ui.cards: Card {
                     x: gutter + mod(i, columns) * (card-width + gap);
@@ -187,6 +223,7 @@ export component AppWindow inherits Window {
                     width: card-width;
                     height: card-height;
                     card: card;
+                    index: i;
                     interactive: !root.modal;
                 }
             }
