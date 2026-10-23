@@ -83,6 +83,28 @@ component Artwork inherits Rectangle {
 export component Card inherits Rectangle {
     in property <InstallCard> card;
     in property <bool> interactive: true;
+    in property <int> index;
+
+    function focus-changed(focused: bool) {
+        if (focused) {
+            Ui.focused-card = root.index;
+        } else if (Ui.focused-card == root.index) {
+            Ui.focused-card = -1;
+        }
+    }
+
+    // Takes focus when an arrow key moves here: Play, or "•••" when Play is
+    // disabled (disabled buttons cannot hold focus).
+    property <int> focus-serial: Ui.focus-serial;
+    changed focus-serial => {
+        if (Ui.focus-target == root.index) {
+            if (play-button.enabled) {
+                play-button.focus();
+            } else {
+                more-button.focus();
+            }
+        }
+    }
 
     border-radius: Theme.radius;
     background: Theme.surface;
@@ -140,6 +162,7 @@ export component Card inherits Rectangle {
                     }
                 }
                 ComboBox {
+                    changed has-focus => { root.focus-changed(self.has-focus); }
                     enabled: root.interactive && root.card.profiles.length > 1;
                     model: root.card.profiles;
                     current-index: root.card.profile-index;
@@ -149,7 +172,8 @@ export component Card inherits Rectangle {
                 Rectangle { height: 8px; }
                 HorizontalLayout {
                     spacing: 8px;
-                    Button {
+                    play-button := Button {
+                        changed has-focus => { root.focus-changed(self.has-focus); }
                         text: root.card.play-label;
                         primary: true;
                         enabled: root.interactive && root.card.can-play;
@@ -157,12 +181,14 @@ export component Card inherits Rectangle {
                         clicked => { Ui.play(root.card.id); }
                     }
                     if root.card.show-open: Button {
+                        changed has-focus => { root.focus-changed(self.has-focus); }
                         text: root.card.open-label;
                         enabled: root.interactive && root.card.can-open;
                         accessible-label: root.card.open-label + " for " + root.card.name;
                         clicked => { Ui.open-mo2(root.card.id); }
                     }
-                    Button {
+                    more-button := Button {
+                        changed has-focus => { root.focus-changed(self.has-focus); }
                         text: "•••";
                         enabled: root.interactive;
                         accessible-label: "More actions for " + root.card.name;
