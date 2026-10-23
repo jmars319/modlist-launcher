@@ -13,7 +13,12 @@ use crate::{AppWindow, Ui};
 
 pub enum Pending {
     Remove(Uuid),
-    ReplaceShortcut { id: Option<Uuid>, place: ShortcutPlace },
+    /// Restoring Steam's launch options failed; remove without restoring.
+    RemoveSkippingSteam(Uuid),
+    ReplaceShortcut {
+        id: Option<Uuid>,
+        place: ShortcutPlace,
+    },
 }
 
 pub fn wire(ui: &AppWindow, c: &Shared) {
@@ -76,7 +81,8 @@ pub fn wire(ui: &AppWindow, c: &Shared) {
         g.on_confirm_accepted(move || {
             let mut ctl = c.borrow_mut();
             match ctl.confirm.take() {
-                Some(Pending::Remove(id)) => ctl.remove(id),
+                Some(Pending::Remove(id)) => ctl.remove(id, true),
+                Some(Pending::RemoveSkippingSteam(id)) => ctl.remove(id, false),
                 Some(Pending::ReplaceShortcut { id, place }) => ctl.shortcut(id, place, true),
                 None => ctl.close_sheet(),
             }
@@ -116,14 +122,54 @@ impl Controller {
             inst.name,
             inst.working_directory.display()
         );
-        if inst.steam_hook.is_some() {
-            text.push_str(" It is still connected to Steam's Play button. Restore Steam's launch options first (Steam Play Button… > Restore Previous), or Steam's Play button will report that the modlist is missing.");
-        }
+        let button = if inst.steam_hook.is_some() {
+            text.push_str(" It is connected to Steam's Play button, so the game's previous Steam launch options are put back first. Steam must be closed for that.");
+            "Restore and Remove"
+        } else {
+            "Remove"
+        };
         let title = format!("Remove {}?", inst.name);
-        self.confirm(Pending::Remove(id), &title, &text, "Remove", true);
+        self.confirm(Pending::Remove(id), &title, &text, button, true);
     }
 
-    fn remove(&mut self, id: Uuid) {
+    /// Removes an installation from the launcher. With `restore_steam`, its
+    /// Steam Play hook is undone first, so Steam's Play button does not point
+    /// at a modlist the launcher no longer knows.
+    fn remove(&mut self, id: Uuid, restore_steam: bool) {
+        let Some(name) = self.state.config.find(id).map(|i| i.name.clone()) else { return };
+        let hook = self.state.config.find(id).and_then(|i| i.steam_hook.clone());
+        let mut steam_note = "";
+        if let (true, Some(hook)) = (restore_steam, hook) {
+            match crate::steam_hooks::restore(
+                &hook,
+                self.state.steam.as_ref(),
+                self.state.data(),
+                crate::platform::steam::is_running(),
+                |l| self.state.log(l),
+            ) {
+                Ok(crate::steam_hooks::Restored::Restored) => steam_note = " Steam's previous launch options are back.",
+                Ok(crate::steam_hooks::Restored::LeftAsIs) => {
+                    steam_note = " Its Steam launch options had been changed outside the launcher, so they were left as they are."
+                }
+                Err(crate::steam_hooks::RestoreError::SteamRunning) => {
+                    self.close_sheet();
+                    self.banner(
+                        &format!(
+                            "Exit Steam completely (Steam menu > Exit), then remove {name} again. Nothing was changed."
+                        ),
+                        true,
+                    );
+                    return;
+                }
+                Err(e) => {
+                    let text = format!(
+                        "Steam's launch options could not be restored: {e}\n\nRemove {name} anyway? Steam's Play button would then need its launch options cleared by hand: right-click the game > Properties > General > Launch Options."
+                    );
+                    self.confirm(Pending::RemoveSkippingSteam(id), "Remove anyway?", &text, "Remove Anyway", true);
+                    return;
+                }
+            }
+        }
         let Some(inst) = self.state.config.remove(id) else { return };
         if let Artwork::Custom { file } = &inst.artwork
             && let Ok(path) = self.state.data().resolve(file)
@@ -135,7 +181,7 @@ impl Controller {
         self.state.inspections.remove(&id);
         self.close_sheet();
         if self.save_or_report() {
-            self.banner(&format!("Removed {} from the launcher.", inst.name), false);
+            self.banner(&format!("Removed {} from the launcher.{steam_note}", inst.name), false);
         }
         self.refresh_cards();
     }

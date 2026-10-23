@@ -310,3 +310,51 @@ export component MessageWindow inherits Window {
         }
     }
 }
+
+/// A message with two choices, for launches and maintenance that have no main
+/// window (for example the uninstaller restoring Steam's launch options).
+export component PromptWindow inherits Window {
+    in property <string> heading;
+    in property <string> message;
+    in property <string> primary-label: "Retry";
+    in property <string> secondary-label: "Skip";
+    callback primary();
+    callback secondary();
+
+    title: "Modlist Launcher";
+    icon: @image-url("../../../assets/icon-256.png");
+    width: 460px;
+    background: Theme.surface;
+    default-font-size: 13px;
+    forward-focus: primary-button;
+
+    VerticalLayout {
+        padding: 22px;
+        spacing: 12px;
+        Text {
+            text: root.heading;
+            font-size: 18px;
+            font-weight: 700;
+            color: Theme.text;
+            wrap: word-wrap;
+        }
+        Text {
+            text: root.message;
+            color: Theme.text;
+            wrap: word-wrap;
+        }
+        HorizontalLayout {
+            alignment: end;
+            spacing: 10px;
+            Button {
+                text: root.secondary-label;
+                clicked => { root.secondary(); }
+            }
+            primary-button := Button {
+                text: root.primary-label;
+                primary: true;
+                clicked => { root.primary(); }
+            }
+        }
+    }
+}

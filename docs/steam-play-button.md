@@ -24,7 +24,13 @@ To set it by hand instead, press **Copy**. Then in Steam, right-click the game, 
 
 ## Undo
 
-**••• > Steam Play Button… > Restore Previous** puts back the launch options the game had before. Steam must be closed for this too. Before removing a modlist from the launcher, restore its launch options first, or Steam's Play button will report that the modlist is missing.
+Steam must be closed for any of these.
+
+- **••• > Steam Play Button… > Restore Previous** puts back the launch options the game had before.
+- **Removing a modlist** from the launcher restores its launch options first (**Restore and Remove**). If Steam is running, nothing is removed until you exit Steam and try again.
+- **Uninstalling the launcher** restores every connected game's launch options. If Steam is running, the uninstaller asks you to exit it and choose Retry. If you skip, it tells you which games to fix by hand.
+
+The launcher only restores a value it set itself. If you changed a game's launch options in Steam afterwards, they are left as they are.
 
 ## Steam Cloud
 
