@@ -169,6 +169,66 @@ fn find_modlist_name(root: &Path) -> Option<String> {
         .find(|s| !s.is_empty())
 }
 
+/// Executables in a game folder that are never the game itself: launchers,
+/// script-extender loaders, crash reporters, installers and tools.
+const NOT_THE_GAME: &[&str] = &[
+    "launcher",
+    "loader",
+    "crash",
+    "report",
+    "unins",
+    "setup",
+    "redist",
+    "dxsetup",
+    "creationkit",
+    "papyrus",
+    "helper",
+    "updater",
+    "bugsplat",
+    "easyanticheat",
+    "benchmark",
+    "config",
+    "skse",
+    "f4se",
+    "nvse",
+    "obse",
+    "fose",
+    "sfse",
+];
+
+/// The game's own executable in MO2's game folder: the largest `.exe` there
+/// (or in the usual `bin\x64`-style subfolders) that is not a launcher,
+/// loader or tool. Used for shortcut and card icons, because the Play target
+/// is often a script-extender loader with a poor icon or none.
+pub fn game_executable(game_path: &Path) -> Option<PathBuf> {
+    const SUBFOLDERS: &[&[&str]] = &[&[], &["bin", "x64"], &["bin", "x64_dx12"], &["bin", "Win64"], &["bin"], &["x64"]];
+    SUBFOLDERS
+        .iter()
+        .filter_map(|parts| std::fs::read_dir(parts.iter().fold(game_path.to_path_buf(), |p, s| p.join(s))).ok())
+        .flat_map(|entries| entries.flatten())
+        .filter_map(|e| {
+            let name = e.file_name().to_str()?.to_lowercase();
+            let meta = e.metadata().ok()?;
+            let candidate =
+                meta.is_file() && name.ends_with(".exe") && !NOT_THE_GAME.iter().any(|word| name.contains(word));
+            candidate.then(|| (meta.len(), e.path()))
+        })
+        .max_by_key(|(len, _)| *len)
+        .map(|(_, path)| path)
+}
+
+impl Mo2Install {
+    /// Best executable to take an icon from: the game itself, then the Play
+    /// target, then Mod Organizer.
+    pub fn icon_source(&self, play_title: Option<&str>) -> PathBuf {
+        self.game_path
+            .as_deref()
+            .and_then(game_executable)
+            .or_else(|| play_title.and_then(|t| self.executable(t)).map(|e| e.binary.clone()).filter(|p| p.is_file()))
+            .unwrap_or_else(|| self.exe.clone())
+    }
+}
+
 #[cfg(test)]
 pub(crate) mod fixtures {
     use std::path::{Path, PathBuf};
@@ -291,6 +351,59 @@ mod tests {
 
         assert!(matches!(read_install(&tmp.path().join("nope/ModOrganizer.exe")), Err(Mo2Error::ExeMissing(_))));
         assert!(matches!(read_install(&tmp.path().join("helper.exe")), Err(Mo2Error::NotMo2(_))));
+    }
+
+    fn exe(path: &Path, bytes: usize) {
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, vec![0u8; bytes]).unwrap();
+    }
+
+    #[test]
+    fn game_executable_skips_launchers_and_loaders() {
+        let tmp = tempfile::tempdir().unwrap();
+        // Skyrim stock game: the loader would be the Play target.
+        let skyrim = tmp.path().join("stock game");
+        exe(&skyrim.join("SkyrimSE.exe"), 3000);
+        exe(&skyrim.join("SkyrimSELauncher.exe"), 4000);
+        exe(&skyrim.join("skse64_loader.exe"), 100);
+        assert_eq!(game_executable(&skyrim), Some(skyrim.join("SkyrimSE.exe")));
+
+        // Cyberpunk: the game sits in bin/x64, the root only has the launcher.
+        let cp = tmp.path().join("Cyberpunk 2077");
+        exe(&cp.join("REDprelauncher.exe"), 500);
+        exe(&cp.join("bin/x64/Cyberpunk2077.exe"), 6000);
+        exe(&cp.join("bin/x64/REDEngineErrorReporter.exe"), 300);
+        assert_eq!(game_executable(&cp), Some(cp.join("bin/x64/Cyberpunk2077.exe")));
+
+        // Witcher 3 next-gen: only the dx12 folder.
+        let w3 = tmp.path().join("The Witcher 3");
+        exe(&w3.join("bin/x64_dx12/witcher3.exe"), 8000);
+        assert_eq!(game_executable(&w3), Some(w3.join("bin/x64_dx12/witcher3.exe")));
+
+        assert_eq!(game_executable(&tmp.path().join("missing")), None);
+        let tools = tmp.path().join("tools");
+        exe(&tools.join("f4se_loader.exe"), 10);
+        assert_eq!(game_executable(&tools), None);
+    }
+
+    #[test]
+    fn icon_source_prefers_the_game_over_the_play_target() {
+        let tmp = tempfile::tempdir().unwrap();
+        let game = tmp.path().join("Stock Game Folder");
+        exe(&game.join("Fallout4.exe"), 6000);
+        exe(&game.join("Fallout4Launcher.exe"), 400);
+        let loader = tmp.path().join("mods/F4SE/root/f4se_loader.exe");
+        exe(&loader, 50);
+        let fake =
+            portable(tmp.path(), "LITR", &ini_for("Fallout 4", &game, &[("Play Life In The Ruins", &loader)]), &[]);
+        let install = read_install(&fake.exe).unwrap();
+        assert_eq!(install.icon_source(Some("Play Life In The Ruins")), game.join("Fallout4.exe"));
+
+        // No game folder: the Play target, then MO2 itself.
+        let fake = portable(tmp.path(), "NoGame", &ini_for("X", &tmp.path().join("gone"), &[("Play", &loader)]), &[]);
+        let install = read_install(&fake.exe).unwrap();
+        assert_eq!(install.icon_source(Some("Play")), loader);
+        assert_eq!(install.icon_source(None), fake.exe);
     }
 
     #[test]

@@ -193,13 +193,13 @@ impl Controller {
         let (name, args, icon, description) = match id.and_then(|id| self.state.config.find(id)) {
             Some(inst) => {
                 let install = self.state.inspections.get(&inst.id).and_then(|i| i.install.as_ref());
-                let icon = match (&inst.play_action, install) {
-                    (PlayAction::Executable { title }, Some(i)) => {
-                        i.executable(title).map(|e| e.binary.clone()).filter(|p| p.is_file())
-                    }
-                    _ => None,
-                }
-                .unwrap_or_else(|| inst.exe_path.clone());
+                // The game's own exe carries its real icon; a Play target such as
+                // skse64_loader.exe usually has a poor one or none.
+                let play_title = match &inst.play_action {
+                    PlayAction::Executable { title } => Some(title.as_str()),
+                    PlayAction::OpenMo2 => None,
+                };
+                let icon = install.map(|i| i.icon_source(play_title)).unwrap_or_else(|| inst.exe_path.clone());
                 (
                     inst.name.clone(),
                     format!("--launch {}", inst.id),

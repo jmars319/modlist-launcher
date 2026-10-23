@@ -31,13 +31,11 @@ struct ArtKey {
 
 fn icon_source(inst: &Installation, install: Option<&Mo2Install>) -> Option<PathBuf> {
     let install = install?;
-    let play = match &inst.play_action {
-        PlayAction::Executable { title } => install.executable(title).map(|e| e.binary.clone()),
-        PlayAction::OpenMo2 => None,
+    let play_title = match &inst.play_action {
+        PlayAction::Executable { title } => Some(title.as_str()),
+        PlayAction::OpenMo2 => install.default_play_executable().map(|e| e.title.as_str()),
     };
-    play.or_else(|| install.default_play_executable().map(|e| e.binary.clone()))
-        .filter(|p| p.is_file())
-        .or_else(|| Some(install.exe.clone()))
+    Some(install.icon_source(play_title))
 }
 
 impl ArtCache {
