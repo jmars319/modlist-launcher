@@ -7,6 +7,7 @@ mod headless;
 mod launching;
 mod platform;
 mod state;
+mod steam_hooks;
 
 slint::include_modules!();
 
@@ -24,6 +25,7 @@ fn main() {
         Command::Gui => gui::run(),
         Command::Launch { target, mode } => headless::launch(&target, mode),
         Command::Steam { target, original } => headless::steam(&target, &original),
+        Command::RestoreSteam => headless::restore_steam(),
         Command::Help => {
             headless::show_message("Modlist Launcher", cli::USAGE);
             0

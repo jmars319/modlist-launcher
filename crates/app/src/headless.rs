@@ -11,7 +11,7 @@ use slint::ComponentHandle;
 
 use crate::launching::{self, Outcome};
 use crate::state::{AppState, running_mo2};
-use crate::{MessageWindow, SteamChooser, platform};
+use crate::{MessageWindow, PromptWindow, SteamChooser, platform};
 
 pub fn show_message(heading: &str, message: &str) {
     let Ok(w) = MessageWindow::new() else { return };
@@ -24,6 +24,100 @@ pub fn show_message(heading: &str, message: &str) {
         }
     });
     let _ = w.run();
+}
+
+/// Shows a two-choice prompt; true when the primary choice was picked.
+pub fn prompt(heading: &str, message: &str, primary: &str, secondary: &str) -> bool {
+    let Ok(w) = PromptWindow::new() else { return false };
+    w.set_heading(heading.into());
+    w.set_message(message.into());
+    w.set_primary_label(primary.into());
+    w.set_secondary_label(secondary.into());
+    let picked = std::rc::Rc::new(std::cell::Cell::new(false));
+    for (choice, setter) in [
+        (true, PromptWindow::on_primary as fn(&PromptWindow, _)),
+        (false, PromptWindow::on_secondary as fn(&PromptWindow, _)),
+    ] {
+        let (picked, weak) = (picked.clone(), w.as_weak());
+        setter(&w, move || {
+            picked.set(choice);
+            if let Some(w) = weak.upgrade() {
+                let _ = w.hide();
+            }
+        });
+    }
+    let _ = w.run();
+    picked.get()
+}
+
+/// `--restore-steam`, run by the uninstaller: puts back every game's previous
+/// Steam launch options so Steam's Play button does not point at a removed
+/// launcher. Silent when there is nothing to do or everything worked.
+pub fn restore_steam() -> i32 {
+    let (mut state, _) = AppState::load();
+    let hooked: Vec<_> = state
+        .config
+        .installations
+        .iter()
+        .filter_map(|i| i.steam_hook.clone().map(|h| (i.id, i.name.clone(), h)))
+        .collect();
+    if hooked.is_empty() {
+        return 0;
+    }
+    let names = hooked.iter().map(|(_, n, _)| n.as_str()).collect::<Vec<_>>().join(", ");
+    let mut problems = Vec::new();
+    for (id, name, hook) in &hooked {
+        let result = loop {
+            match crate::steam_hooks::restore(
+                hook,
+                state.steam.as_ref(),
+                state.data(),
+                platform::steam::is_running(),
+                |l| state.log(l),
+            ) {
+                Err(crate::steam_hooks::RestoreError::SteamRunning) => {
+                    let retry = prompt(
+                        "Exit Steam to finish",
+                        &format!(
+                            "Steam's Play button still starts {names} through Modlist Launcher. Exit Steam completely (Steam menu > Exit), then choose Retry to put back the previous launch options. If you skip, change them yourself in Steam: right-click the game > Properties > General > Launch Options."
+                        ),
+                        "Retry",
+                        "Skip",
+                    );
+                    if !retry {
+                        break Err("skipped while Steam was running".to_string());
+                    }
+                }
+                other => break other.map_err(|e| e.to_string()),
+            }
+        };
+        match result {
+            Ok(_) => {
+                if let Some(inst) = state.config.find_mut(*id) {
+                    inst.steam_hook = None;
+                }
+            }
+            Err(e) => {
+                state.log(&format!("restore-steam: {name}: {e}"));
+                problems.push(format!("{name}: {e}"));
+                if e.starts_with("skipped") {
+                    break;
+                }
+            }
+        }
+    }
+    let _ = state.save();
+    if problems.is_empty() {
+        return 0;
+    }
+    show_message(
+        "Steam launch options not restored",
+        &format!(
+            "{}\n\nIn Steam, right-click the game > Properties > General > Launch Options, and clear the Modlist Launcher entry.",
+            problems.join("\n")
+        ),
+    );
+    1
 }
 
 fn find<'a>(state: &'a AppState, target: &str) -> Result<&'a Installation, String> {

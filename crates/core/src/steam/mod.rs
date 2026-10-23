@@ -5,5 +5,5 @@ pub mod launch_options;
 pub mod library;
 pub mod vdf;
 
-pub use launch_options::{get_launch_options, set_launch_options, wrapper_launch_options};
+pub use launch_options::{RestorePlan, get_launch_options, plan_restore, set_launch_options, wrapper_launch_options};
 pub use library::{Account, AppInfo, SteamRoot};

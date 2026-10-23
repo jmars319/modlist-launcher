@@ -10,6 +10,7 @@ Usage:
   modlist-launcher --launch <id|name>      Run an installation's Play action
   modlist-launcher --open <id|name>        Open an installation's Mod Organizer
   modlist-launcher --steam <id> -- <cmd>   Used by Steam launch options (%command%)
+  modlist-launcher --restore-steam         Undo every Steam Play button change (run on uninstall)
   modlist-launcher --help | --version";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -25,6 +26,9 @@ pub enum Command {
         target: String,
         original: Vec<String>,
     },
+    /// Restores every game's previous Steam launch options. The uninstaller
+    /// runs this so Steam's Play button does not point at a removed program.
+    RestoreSteam,
     Help,
     Version,
 }
@@ -53,6 +57,7 @@ pub fn parse<I: IntoIterator<Item = OsString>>(args: I) -> Result<Command, CliEr
             };
             return Ok(Command::Steam { target, original });
         }
+        "--restore-steam" => Command::RestoreSteam,
         "--help" | "-h" | "/?" => Command::Help,
         "--version" | "-V" => Command::Version,
         other => return Err(CliError::Unknown(other.to_string())),
@@ -103,5 +108,7 @@ mod tests {
     fn rejects_unknown() {
         assert_eq!(p(&["--frobnicate"]), Err(CliError::Unknown("--frobnicate".into())));
         assert_eq!(p(&["--help"]), Ok(Command::Help));
+        assert_eq!(p(&["--restore-steam"]), Ok(Command::RestoreSteam));
+        assert_eq!(p(&["--restore-steam", "x"]), Err(CliError::Unknown("x".into())));
     }
 }
