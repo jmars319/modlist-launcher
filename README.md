@@ -43,7 +43,10 @@ Check downloads against `SHA256SUMS.txt`. Builds are not code-signed yet, so Win
 2. Check the card. **Play** starts the configured executable through MO2, and **Open MO2** opens Mod Organizer.
 3. Under **•••**, you can edit the entry, connect it to Steam's Play button, create shortcuts, reorder it or remove it.
 
-Keyboard: Tab and Shift+Tab move between controls, Enter or Space activates, and Esc closes a sheet. Ctrl+N adds an installation and Ctrl+, opens Settings.
+Keyboard:
+- Tab and Shift+Tab move between controls, Enter or Space activates, and Esc closes a sheet.
+- From any card, the arrow keys move to the neighbouring card, and Home/End go to the first or last. Focus lands on the card's main button. The profile list keeps Up/Down for itself.
+- Ctrl+N adds an installation, and Ctrl+, opens Settings.
 
 ### Command line
 

@@ -26,7 +26,7 @@ Enforcement:
 | --- | --- |
 | `%LOCALAPPDATA%\Modlist Launcher\` | Configuration, custom artwork copies, Steam backups, log. |
 | `Desktop\*.lnk`, `Start Menu\Programs\*.lnk` | Only when you choose Add to Desktop or Add to Start Menu. An existing file is only replaced after you confirm. |
-| One account's Steam `userdata\<id>\config\localconfig.vdf` | Only when you press Apply or Restore in the Steam Play Button sheet. |
+| One account's Steam `userdata\<id>\config\localconfig.vdf` | Only when you press Apply or Restore in the Steam Play Button sheet, remove a modlist connected to Steam's Play button, or uninstall the launcher (`--restore-steam`). |
 
 When it changes Steam's `localconfig.vdf`, the launcher:
 

@@ -79,6 +79,23 @@ pub fn wrapper_launch_options(launcher_exe: &Path, installation_id: &str) -> Str
     format!("\"{}\" --steam {} -- %command%", launcher_exe.display(), quote_arg(installation_id))
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RestorePlan {
+    /// The value is still the launcher's; write this text to restore the
+    /// game's previous launch options.
+    Restore(String),
+    /// Someone changed the value since the launcher set it; leave it alone.
+    ChangedElsewhere,
+}
+
+/// Decides how to undo the launcher's Steam Play hook in `text`.
+pub fn plan_restore(text: &str, app_id: u32, applied: &str, previous: &str) -> Result<RestorePlan, LaunchOptionsError> {
+    if get_launch_options(text, app_id)? != applied {
+        return Ok(RestorePlan::ChangedElsewhere);
+    }
+    Ok(RestorePlan::Restore(set_launch_options(text, app_id, previous)?))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -135,6 +152,28 @@ mod tests {
     fn refuses_unexpected_files() {
         assert_eq!(set_launch_options("\"Other\" { }", 1, "x"), Err(LaunchOptionsError::UnexpectedLayout));
         assert!(matches!(set_launch_options("\"broken\" {", 1, "x"), Err(LaunchOptionsError::Parse(_))));
+    }
+
+    #[test]
+    fn plan_restore_puts_back_previous_value() {
+        let applied = "\"C:\\x\\l.exe\" --steam a -- %command%";
+        let hooked = set_launch_options(SAMPLE, 1091500, applied).unwrap();
+        match plan_restore(&hooked, 1091500, applied, "-skipStartScreen").unwrap() {
+            RestorePlan::Restore(text) => assert_eq!(text, SAMPLE),
+            other => panic!("expected a restore, got {other:?}"),
+        }
+        // A game that had no options before gets an empty value back.
+        let hooked = set_launch_options(SAMPLE, 292030, applied).unwrap();
+        let RestorePlan::Restore(text) = plan_restore(&hooked, 292030, applied, "").unwrap() else { panic!() };
+        assert_eq!(get_launch_options(&text, 292030).unwrap(), "");
+    }
+
+    #[test]
+    fn plan_restore_leaves_values_changed_elsewhere() {
+        let applied = "\"C:\\x\\l.exe\" --steam a -- %command%";
+        let edited = set_launch_options(SAMPLE, 1091500, "-windowed").unwrap();
+        assert_eq!(plan_restore(&edited, 1091500, applied, "").unwrap(), RestorePlan::ChangedElsewhere);
+        assert!(plan_restore("\"Other\" { }", 1, applied, "").is_err());
     }
 
     #[test]

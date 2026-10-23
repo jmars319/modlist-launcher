@@ -45,6 +45,12 @@ export global Ui {
     in-out property <int> appearance; // 0 system, 1 light, 2 dark
     in-out property <bool> close-after-launch;
     in-out property <string> data-folder;
+
+    // Arrow-key movement between cards. Each card reports when focus enters
+    // or leaves it; a move bumps focus-serial so the target card can take focus.
+    in-out property <int> focused-card: -1;
+    in-out property <int> focus-target: -1;
+    in-out property <int> focus-serial;
     in-out property <string> version;
 
     // Action sheet for one card

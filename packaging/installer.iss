@@ -51,5 +51,11 @@ Name: "{autodesktop}\Modlist Launcher"; Filename: "{app}\modlist-launcher.exe"; 
 [Run]
 Filename: "{app}\modlist-launcher.exe"; Description: "Open Modlist Launcher"; Flags: nowait postinstall skipifsilent
 
+[UninstallRun]
+; Puts back each game's previous Steam launch options, so Steam's Play button
+; does not point at the removed launcher. Silent when there is nothing to do;
+; asks to exit Steam first if it is running.
+Filename: "{app}\modlist-launcher.exe"; Parameters: "--restore-steam"; RunOnceId: "RestoreSteamLaunchOptions"; Flags: waituntilterminated
+
 ; The launcher's own settings in %LOCALAPPDATA%\Modlist Launcher are kept on
 ; uninstall, and nothing inside any Mod Organizer installation was ever written.

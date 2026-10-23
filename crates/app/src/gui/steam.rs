@@ -2,10 +2,9 @@
 //! `localconfig.vdf`, only on Apply or Restore, only while Steam is closed,
 //! and only after a backup copy is saved in the launcher's data folder.
 
-use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
-use modlist_core::config::{SteamHook, timestamp};
+use modlist_core::config::SteamHook;
 use modlist_core::steam::{self, Account};
 use slint::{ComponentHandle, SharedString, VecModel};
 use uuid::Uuid;
@@ -76,14 +75,6 @@ pub fn wire(ui: &AppWindow, c: &Shared) {
             );
         });
     }
-}
-
-fn write_steam_file(path: &Path, text: &str) -> std::io::Result<()> {
-    let tmp = path.with_extension("vdf.modlist-launcher-tmp");
-    std::fs::write(&tmp, text)?;
-    std::fs::rename(&tmp, path).inspect_err(|_| {
-        let _ = std::fs::remove_file(&tmp);
-    })
 }
 
 impl Controller {
@@ -178,14 +169,6 @@ impl Controller {
         }
     }
 
-    fn backup_steam_file(&self, acct: &Account, text: &str) -> Result<PathBuf, String> {
-        let rel = PathBuf::from("steam-backups").join(format!("localconfig-{}-{}.vdf", acct.account_id, timestamp()));
-        self.state
-            .data()
-            .write_atomic(&rel, text.as_bytes())
-            .map_err(|e| format!("Could not back up Steam's settings, so nothing was changed: {e}"))
-    }
-
     fn steam_apply(&mut self) -> Result<String, String> {
         let id = self.steam.id.ok_or("No modlist selected.")?;
         if crate::platform::steam::is_running() {
@@ -200,14 +183,14 @@ impl Controller {
             std::fs::read_to_string(&acct.localconfig).map_err(|e| format!("Could not read Steam's settings: {e}"))?;
         let current = steam::get_launch_options(&text, app).map_err(|e| e.to_string())?;
         if current != proposed {
-            let backup = self.backup_steam_file(&acct, &text)?;
+            let backup = crate::steam_hooks::backup(self.state.data(), acct.account_id, &text)?;
             let updated = steam::set_launch_options(&text, app, &proposed).map_err(|e| e.to_string())?;
-            write_steam_file(&acct.localconfig, &updated)
+            crate::steam_hooks::write(&acct.localconfig, &updated)
                 .map_err(|e| format!("Could not write Steam's settings: {e}"))?;
             let verify =
                 std::fs::read_to_string(&acct.localconfig).ok().and_then(|t| steam::get_launch_options(&t, app).ok());
             if verify.as_deref() != Some(proposed.as_str()) {
-                let _ = write_steam_file(&acct.localconfig, &text);
+                let _ = crate::steam_hooks::write(&acct.localconfig, &text);
                 return Err("Steam's settings did not read back correctly, so the original file was put back.".into());
             }
             self.state.log(&format!(
@@ -237,40 +220,26 @@ impl Controller {
 
     fn steam_restore(&mut self) -> Result<String, String> {
         let id = self.steam.id.ok_or("No modlist selected.")?;
-        if crate::platform::steam::is_running() {
-            return Err("Steam is still running. Exit Steam completely, then press Restore again.".into());
-        }
         let hook = self.state.config.find(id).and_then(|i| i.steam_hook.clone()).ok_or("Nothing to restore.")?;
-        let acct = self
-            .steam
-            .accounts
-            .iter()
-            .find(|a| a.account_id == hook.account_id)
-            .cloned()
-            .ok_or("The Steam account used before was not found.")?;
-        let text =
-            std::fs::read_to_string(&acct.localconfig).map_err(|e| format!("Could not read Steam's settings: {e}"))?;
-        let current = steam::get_launch_options(&text, hook.app_id).map_err(|e| e.to_string())?;
-        let message = if current != hook.applied_launch_options {
-            "Steam's launch options were changed outside the launcher, so they were left as they are.".to_string()
-        } else {
-            let backup = self.backup_steam_file(&acct, &text)?;
-            let updated = steam::set_launch_options(&text, hook.app_id, &hook.previous_launch_options)
-                .map_err(|e| e.to_string())?;
-            write_steam_file(&acct.localconfig, &updated)
-                .map_err(|e| format!("Could not write Steam's settings: {e}"))?;
-            self.state.log(&format!(
-                "steam: restored launch options for app {}; backup {}",
-                hook.app_id,
-                backup.display()
-            ));
-            "Restored Steam's previous launch options.".to_string()
-        };
+        let outcome = crate::steam_hooks::restore(
+            &hook,
+            self.state.steam.as_ref(),
+            self.state.data(),
+            crate::platform::steam::is_running(),
+            |l| self.state.log(l),
+        )
+        .map_err(|e| e.to_string())?;
         if let Some(inst) = self.state.config.find_mut(id) {
             inst.steam_hook = None;
         }
         self.save_or_report();
         self.refresh_cards();
-        Ok(message)
+        Ok(match outcome {
+            crate::steam_hooks::Restored::Restored => "Restored Steam's previous launch options.",
+            crate::steam_hooks::Restored::LeftAsIs => {
+                "Steam's launch options were changed outside the launcher, so they were left as they are."
+            }
+        }
+        .into())
     }
 }

@@ -1,10 +1,11 @@
 //! The launch decision shared by the window, shortcuts and Steam.
 
+use std::path::PathBuf;
 use std::process::Child;
 
-use modlist_core::config::Installation;
+use modlist_core::config::{Installation, PlayAction};
 use modlist_core::launch::{self, LaunchMode};
-use modlist_core::process::{self, Gate, RunningProcess};
+use modlist_core::process::{self, GameState, Gate, RunningProcess};
 use modlist_core::validate::{Inspection, display_message};
 
 use crate::platform;
@@ -16,19 +17,54 @@ pub enum Outcome {
     Focused,
 }
 
-/// Checks everything that can be checked up front, then starts MO2.
+/// The game executable the Play action starts through MO2, if any.
+pub fn play_binary(inst: &Installation, inspection: &Inspection) -> Option<PathBuf> {
+    let PlayAction::Executable { title } = &inst.play_action else { return None };
+    inspection.install.as_ref()?.executable(title).map(|e| e.binary.clone())
+}
+
+/// A readable name for the game, for messages: MO2's game name, else the exe.
+pub fn game_name(inspection: &Inspection, binary: &std::path::Path) -> String {
+    inspection
+        .install
+        .as_ref()
+        .and_then(|i| i.game_name.clone())
+        .or_else(|| binary.file_stem().map(|s| s.to_string_lossy().into_owned()))
+        .unwrap_or_else(|| "The game".into())
+}
+
+/// Whether the game is running now, and whether it has a visible window.
+/// `had_window` is what the caller knows about this process's past.
+pub fn game_state(binary: &std::path::Path, had_window: impl Fn(u32) -> Option<bool>) -> GameState {
+    let name = binary.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let procs = platform::processes::running(|n| n.eq_ignore_ascii_case(&name));
+    let pid = process::is_running(binary, &procs);
+    let has_window = pid.is_some_and(|p| !platform::other_windows::visible_top_level(p).is_empty());
+    GameState::classify(pid, has_window, pid.and_then(had_window))
+}
+
+/// Checks everything that can be checked up front, then starts MO2. `game`
+/// is the current state of the Play action's game; Play is refused while that
+/// game is still running, starting or closing.
 pub fn launch(
     inst: &Installation,
     inspection: &Inspection,
     mode: LaunchMode,
     running: &[RunningProcess],
     all: &[Installation],
+    game: GameState,
 ) -> Result<Outcome, String> {
     if !inspection.can_open() || (mode == LaunchMode::Play && !inspection.can_play()) {
         let msg = inspection
             .first_error()
             .map(|e| display_message(e).to_string())
             .unwrap_or_else(|| "This installation could not be checked.".into());
+        return Err(msg);
+    }
+    if mode == LaunchMode::Play
+        && let Some(binary) = play_binary(inst, inspection)
+        && let Some(msg) = game.describe(&game_name(inspection, &binary))
+    {
         return Err(msg);
     }
     let gate = process::gate(&inst.exe_path, running, all);
