@@ -6,6 +6,7 @@
 mod actions;
 mod edit;
 mod scan;
+mod shortcuts;
 mod steam;
 
 use std::cell::RefCell;
@@ -42,6 +43,7 @@ pub struct Controller {
     pub watches: Vec<Watch>,
     pub games: Games,
     pub orphans: Vec<crate::steam_hooks::Orphan>,
+    pub shortcuts: shortcuts::ShortcutIndex,
 }
 
 /// What each installation's game is doing, with enough history to tell a
@@ -144,7 +146,9 @@ pub fn run() -> i32 {
         watches: Vec::new(),
         games: Games::default(),
         orphans: Vec::new(),
+        shortcuts: Default::default(),
     }));
+    c.borrow_mut().shortcuts.refresh(true);
     c.borrow_mut().refresh_cards();
     {
         let mut ctl = c.borrow_mut();
@@ -177,6 +181,7 @@ pub fn run() -> i32 {
                 c.state.inspect_all();
                 let c = &mut *c;
                 c.games.update(&c.state.config.installations, &c.state.inspections);
+                c.shortcuts.refresh(false);
                 c.refresh_cards();
             }
         });
@@ -439,6 +444,8 @@ impl Controller {
                 all: &self.state.config.installations,
                 starting: self.starting.contains(id),
                 game: self.games.state(*id),
+                desktop_shortcut: self.shortcuts.on_desktop(&self.state.config, inst),
+                start_menu_shortcut: self.shortcuts.in_start_menu(&self.state.config, inst),
                 profiles,
             }));
         }

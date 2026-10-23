@@ -16,6 +16,8 @@ pub struct CardInput<'a> {
     pub all: &'a [Installation],
     pub starting: bool,
     pub game: GameState,
+    pub desktop_shortcut: bool,
+    pub start_menu_shortcut: bool,
     pub profiles: ModelRc<SharedString>,
 }
 
@@ -35,8 +37,32 @@ pub fn profile_index(inst: &Installation, inspection: Option<&Inspection>) -> i3
     inst.profile.as_ref().and_then(|p| profiles.iter().position(|x| x == p)).map_or(0, |i| i as i32 + 1)
 }
 
+/// What the card's setup chips say, for screen readers.
+fn setup_text(steam: bool, desktop: bool, start_menu: bool) -> String {
+    let parts: Vec<&str> = [
+        (steam, "Steam's Play button starts this modlist"),
+        (desktop, "desktop shortcut"),
+        (start_menu, "Start menu shortcut"),
+    ]
+    .into_iter()
+    .filter_map(|(on, text)| on.then_some(text))
+    .collect();
+    if parts.is_empty() { String::new() } else { format!("Set up: {}.", parts.join(", ")) }
+}
+
 pub fn build(input: CardInput<'_>) -> InstallCard {
-    let CardInput { inst, inspection, art, running, all, starting, game, profiles } = input;
+    let CardInput {
+        inst,
+        inspection,
+        art,
+        running,
+        all,
+        starting,
+        game,
+        desktop_shortcut,
+        start_menu_shortcut,
+        profiles,
+    } = input;
     let install = inspection.and_then(|i| i.install.as_ref());
     let has_play_exe = matches!(inst.play_action, PlayAction::Executable { .. });
     let can_open_files = inspection.is_some_and(Inspection::can_open);
@@ -59,6 +85,9 @@ pub fn build(input: CardInput<'_>) -> InstallCard {
         has_icon: art.icon.is_some(),
         icon: art.icon.unwrap_or_default(),
         steam_linked: inst.steam_hook.is_some(),
+        desktop_shortcut,
+        start_menu_shortcut,
+        setup_text: setup_text(inst.steam_hook.is_some(), desktop_shortcut, start_menu_shortcut).into(),
         ..Default::default()
     };
 
@@ -171,6 +200,8 @@ mod tests {
             all,
             starting: false,
             game: GameState::NotRunning,
+            desktop_shortcut: false,
+            start_menu_shortcut: false,
             profiles: ModelRc::default(),
         })
     }
@@ -254,8 +285,20 @@ mod tests {
             all,
             starting: false,
             game,
+            desktop_shortcut: false,
+            start_menu_shortcut: false,
             profiles: ModelRc::default(),
         })
+    }
+
+    #[test]
+    fn setup_chips_are_described_for_screen_readers() {
+        assert_eq!(setup_text(false, false, false), "");
+        assert_eq!(setup_text(false, true, false), "Set up: desktop shortcut.");
+        assert_eq!(
+            setup_text(true, true, true),
+            "Set up: Steam's Play button starts this modlist, desktop shortcut, Start menu shortcut."
+        );
     }
 
     #[test]

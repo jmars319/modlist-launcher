@@ -2,6 +2,7 @@ use std::path::{Path, PathBuf};
 
 use windows::Win32::System::Com::{
     CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED, CoCreateInstance, CoInitializeEx, CoTaskMemFree, IPersistFile,
+    STGM_READ,
 };
 use windows::Win32::UI::Shell::{
     FOLDERID_Desktop, FOLDERID_Programs, IShellLinkW, KNOWN_FOLDER_FLAG, SHGetKnownFolderPath, ShellLink,
@@ -95,6 +96,39 @@ pub fn create_shortcut(path: &Path, s: &Shortcut<'_>, replace: bool) -> Result<(
         file.Save(&HSTRING::from(path.as_os_str()), true).map_err(fail)?;
     }
     Ok(())
+}
+
+/// A shortcut's target program and arguments.
+pub fn read_shortcut(path: &Path) -> Option<(PathBuf, String)> {
+    ensure_com();
+    // SAFETY: COM calls on an interface obtained from CoCreateInstance, with
+    // buffers sized for the strings they receive.
+    unsafe {
+        let link: IShellLinkW = CoCreateInstance(&ShellLink, None, CLSCTX_INPROC_SERVER).ok()?;
+        let file: IPersistFile = link.cast().ok()?;
+        file.Load(&HSTRING::from(path.as_os_str()), STGM_READ).ok()?;
+        let mut target = vec![0u16; 1024];
+        link.GetPath(&mut target, std::ptr::null_mut(), 0).ok()?;
+        let mut args = vec![0u16; 4096];
+        link.GetArguments(&mut args).ok()?;
+        let text =
+            |buf: &[u16]| String::from_utf16_lossy(&buf[..buf.iter().position(|&c| c == 0).unwrap_or(buf.len())]);
+        Some((PathBuf::from(text(&target)), text(&args)))
+    }
+}
+
+/// The installations that shortcuts directly in `place`'s folder start
+/// through this launcher, as written after `--launch` or `--open`.
+pub fn launcher_shortcuts(place: ShortcutPlace) -> Vec<String> {
+    let Some(dir) = folder(place) else { return Vec::new() };
+    let Ok(entries) = std::fs::read_dir(&dir) else { return Vec::new() };
+    entries
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|x| x.eq_ignore_ascii_case("lnk")))
+        .filter_map(|p| read_shortcut(&p))
+        .filter_map(|(target, args)| modlist_core::cli::shortcut_target(&target, &args))
+        .collect()
 }
 
 pub fn open_in_explorer(path: &Path) -> std::io::Result<()> {

@@ -13,6 +13,8 @@ The launcher's promise is that every Mod Organizer 2 installation stays exactly 
 | Game executables named by MO2 (existence, icon) | Play validation; card icon. |
 | Steam `appcache\librarycache\<appid>\*` | Card artwork, displayed only, never copied. |
 | Steam `steamapps\*.acf`, `libraryfolders.vdf`, `config\loginusers.vdf` | Match an MO2 game folder to a Steam app; account names. |
+| Steam `userdata\<id>\config\localconfig.vdf` | Current launch options; Steam games still pointing at the launcher. |
+| `*.lnk` directly in your Desktop and Start menu Programs folders | Which modlists have a shortcut, for the card chips. Read again only when the folder changes. |
 
 Enforcement:
 

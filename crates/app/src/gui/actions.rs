@@ -231,6 +231,8 @@ impl Controller {
                 self.close_sheet();
                 self.state.log(&format!("shortcut: {}", path.display()));
                 self.banner(&format!("Added \"{name}\" to the {where_}."), false);
+                self.shortcuts.refresh(true);
+                self.refresh_cards();
             }
             Err(ShortcutError::Exists(p)) => {
                 let text = format!(

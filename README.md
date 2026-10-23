@@ -24,6 +24,7 @@ Modlist Launcher is an independent project. It is not affiliated with the Mod Or
 - **Shortcuts:**
   - Desktop and Start menu shortcuts for the launcher.
   - Per-modlist shortcuts that start a modlist directly (`--launch <id>`).
+- **Setup at a glance.** Small chips under each card's game name show what is set up for it: **Steam Play** (Steam's Play button starts it), **Desktop** and **Start menu** (a shortcut to it in that folder, found by reading the `.lnk` files there).
 - **Steam Play button** (optional): make Steam's own Play button start a modlist through MO2. Hold Shift while pressing Play to choose with or without mods. See [docs/steam-play-button.md](docs/steam-play-button.md).
 - **Settings:** follows the Windows light/dark setting (or force either), high-DPI aware, keyboard and screen-reader friendly.
 - **No telemetry, ads, accounts or network access. No administrator rights.**
