@@ -64,6 +64,64 @@ pub fn is_running(path: &Path, running: &[RunningProcess]) -> Option<u32> {
     running.iter().find(|p| p.path.as_deref().is_some_and(|x| same_path(x, path))).map(|p| p.pid)
 }
 
+/// What the game a Play action starts is doing right now.
+///
+/// A game process without a window is either still loading or still shutting
+/// down; Cyberpunk 2077 spends about 20 seconds in each. Whether its window was
+/// seen earlier tells the two apart when that history is known.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GameState {
+    NotRunning,
+    Running {
+        pid: u32,
+    },
+    Starting {
+        pid: u32,
+    },
+    Closing {
+        pid: u32,
+    },
+    /// No window and no history: starting or closing.
+    Busy {
+        pid: u32,
+    },
+}
+
+impl GameState {
+    pub fn classify(pid: Option<u32>, has_window: bool, had_window: Option<bool>) -> Self {
+        let Some(pid) = pid else { return GameState::NotRunning };
+        match (has_window, had_window) {
+            (true, _) => GameState::Running { pid },
+            (false, Some(true)) => GameState::Closing { pid },
+            (false, Some(false)) => GameState::Starting { pid },
+            (false, None) => GameState::Busy { pid },
+        }
+    }
+
+    pub fn pid(self) -> Option<u32> {
+        match self {
+            GameState::NotRunning => None,
+            GameState::Running { pid }
+            | GameState::Starting { pid }
+            | GameState::Closing { pid }
+            | GameState::Busy { pid } => Some(pid),
+        }
+    }
+
+    /// Why Play cannot start right now, if it cannot.
+    pub fn describe(self, game: &str) -> Option<String> {
+        match self {
+            GameState::NotRunning => None,
+            GameState::Running { .. } => Some(format!("{game} is already running.")),
+            GameState::Starting { .. } => Some(format!("{game} is starting.")),
+            GameState::Closing { .. } => {
+                Some(format!("{game} is still closing. Press Play again once it has finished."))
+            }
+            GameState::Busy { .. } => Some(format!("{game} is still starting or closing. Try again in a moment.")),
+        }
+    }
+}
+
 pub fn describe_block(gate: &Gate) -> Option<String> {
     match gate {
         Gate::OtherInstanceRunning { name: Some(name), .. } => Some(format!(
@@ -101,6 +159,26 @@ pub fn is_mo2_wait_dialog<S: AsRef<str>>(texts: &[S], game_exe_name: &str, game_
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn classifies_game_state() {
+        assert_eq!(GameState::classify(None, false, Some(true)), GameState::NotRunning);
+        assert_eq!(GameState::classify(Some(7), true, None), GameState::Running { pid: 7 });
+        assert_eq!(GameState::classify(Some(7), false, Some(true)), GameState::Closing { pid: 7 });
+        assert_eq!(GameState::classify(Some(7), false, Some(false)), GameState::Starting { pid: 7 });
+        assert_eq!(GameState::classify(Some(7), false, None), GameState::Busy { pid: 7 });
+        assert_eq!(GameState::Closing { pid: 7 }.pid(), Some(7));
+        assert_eq!(GameState::NotRunning.pid(), None);
+    }
+
+    #[test]
+    fn describes_game_state() {
+        assert_eq!(GameState::NotRunning.describe("Cyberpunk 2077"), None);
+        let closing = GameState::Closing { pid: 1 }.describe("Cyberpunk 2077").unwrap();
+        assert!(closing.starts_with("Cyberpunk 2077 is still closing"));
+        assert!(GameState::Running { pid: 1 }.describe("Cyberpunk 2077").unwrap().contains("already running"));
+        assert!(GameState::Busy { pid: 1 }.describe("X").unwrap().contains("starting or closing"));
+    }
 
     #[test]
     fn recognizes_mo2_wait_dialog() {

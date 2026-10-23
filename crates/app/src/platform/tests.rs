@@ -129,3 +129,67 @@ fn wait_dialog_is_found_by_text_and_minimized() {
     unsafe { PostMessageW(Some(hwnd), WM_CLOSE, WPARAM(0), LPARAM(0)).unwrap() };
     shown.join().unwrap();
 }
+
+const GAME_MODE_ENV: &str = "MODLIST_TEST_GAME_MODE";
+
+/// Helper run inside a fake game exe: stays alive, either without a window
+/// ("hidden") or showing a message box ("window"), until it is killed.
+#[test]
+#[ignore = "helper for game_state_tells_windowed_from_windowless"]
+fn helper_fake_game() {
+    match std::env::var(GAME_MODE_ENV).as_deref() {
+        Ok("window") => {
+            use windows::Win32::UI::WindowsAndMessaging::{MB_OK, MessageBoxW};
+            use windows::core::HSTRING;
+            // SAFETY: a modal message box in this helper process.
+            unsafe { MessageBoxW(None, &HSTRING::from("fake game"), &HSTRING::from("FakeGame"), MB_OK) };
+        }
+        Ok("hidden") => std::thread::sleep(Duration::from_secs(20)),
+        _ => {}
+    }
+}
+
+fn spawn_fake_game(dir: &std::path::Path, mode: &str) -> (std::path::PathBuf, std::process::Child) {
+    let exe = dir.join(format!("FakeGame-{mode}.exe"));
+    std::fs::copy(std::env::current_exe().unwrap(), &exe).unwrap();
+    let child = std::process::Command::new(&exe)
+        .args(["--exact", "platform::tests::helper_fake_game", "--ignored"])
+        .env(GAME_MODE_ENV, mode)
+        .spawn()
+        .unwrap();
+    (exe, child)
+}
+
+fn wait_for(cond: impl Fn() -> bool) -> bool {
+    let deadline = Instant::now() + Duration::from_secs(15);
+    while Instant::now() < deadline {
+        if cond() {
+            return true;
+        }
+        std::thread::sleep(Duration::from_millis(150));
+    }
+    false
+}
+
+#[test]
+fn game_state_tells_windowed_from_windowless() {
+    use modlist_core::process::GameState;
+    let tmp = tempfile::tempdir().unwrap();
+
+    let (hidden, mut hidden_child) = spawn_fake_game(tmp.path(), "hidden");
+    assert!(wait_for(|| crate::launching::game_state(&hidden, |_| None) != GameState::NotRunning));
+    let pid = hidden_child.id();
+    assert_eq!(crate::launching::game_state(&hidden, |_| None), GameState::Busy { pid });
+    assert_eq!(crate::launching::game_state(&hidden, |_| Some(true)), GameState::Closing { pid });
+    assert_eq!(crate::launching::game_state(&hidden, |_| Some(false)), GameState::Starting { pid });
+
+    let (shown, mut shown_child) = spawn_fake_game(tmp.path(), "window");
+    let shown_pid = shown_child.id();
+    assert!(wait_for(|| crate::launching::game_state(&shown, |_| None) == GameState::Running { pid: shown_pid }));
+
+    for child in [&mut hidden_child, &mut shown_child] {
+        let _ = child.kill();
+        let _ = child.wait();
+    }
+    assert_eq!(crate::launching::game_state(&hidden, |_| None), GameState::NotRunning);
+}

@@ -358,3 +358,42 @@ export component PromptWindow inherits Window {
         }
     }
 }
+
+/// Shown while a previous run of the game is still closing; the launcher
+/// starts the modlist as soon as it has exited.
+export component WaitWindow inherits Window {
+    in property <string> heading;
+    in property <string> message;
+    callback cancel();
+
+    title: "Modlist Launcher";
+    icon: @image-url("../../../assets/icon-256.png");
+    width: 440px;
+    background: Theme.surface;
+    default-font-size: 13px;
+    forward-focus: cancel-button;
+
+    VerticalLayout {
+        padding: 22px;
+        spacing: 12px;
+        Text {
+            text: root.heading;
+            font-size: 18px;
+            font-weight: 700;
+            color: Theme.text;
+            wrap: word-wrap;
+        }
+        Text {
+            text: root.message;
+            color: Theme.secondary-text;
+            wrap: word-wrap;
+        }
+        HorizontalLayout {
+            alignment: end;
+            cancel-button := Button {
+                text: "Cancel";
+                clicked => { root.cancel(); }
+            }
+        }
+    }
+}

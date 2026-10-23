@@ -1,7 +1,7 @@
 //! Turns an installation and its current state into what a card shows.
 
 use modlist_core::config::{Installation, PlayAction};
-use modlist_core::process::{self, Gate, RunningProcess};
+use modlist_core::process::{self, GameState, Gate, RunningProcess};
 use modlist_core::validate::{Inspection, Severity, display_message};
 use slint::{ModelRc, SharedString};
 
@@ -15,6 +15,7 @@ pub struct CardInput<'a> {
     pub running: &'a [RunningProcess],
     pub all: &'a [Installation],
     pub starting: bool,
+    pub game: GameState,
     pub profiles: ModelRc<SharedString>,
 }
 
@@ -35,7 +36,7 @@ pub fn profile_index(inst: &Installation, inspection: Option<&Inspection>) -> i3
 }
 
 pub fn build(input: CardInput<'_>) -> InstallCard {
-    let CardInput { inst, inspection, art, running, all, starting, profiles } = input;
+    let CardInput { inst, inspection, art, running, all, starting, game, profiles } = input;
     let install = inspection.and_then(|i| i.install.as_ref());
     let has_play_exe = matches!(inst.play_action, PlayAction::Executable { .. });
     let can_open_files = inspection.is_some_and(Inspection::can_open);
@@ -76,6 +77,28 @@ pub fn build(input: CardInput<'_>) -> InstallCard {
         card.status_text = "Needs attention".into();
         card.detail = first_error.unwrap_or_else(|| "This installation could not be checked.".into()).into();
         card.detail_is_error = true;
+        return card;
+    }
+    if game != GameState::NotRunning {
+        let name = card.game.to_string();
+        let (status, text, detail) = match game {
+            GameState::Running { .. } => (CardStatus::Running, "Playing", format!("{name} is running.")),
+            GameState::Starting { .. } => (CardStatus::Starting, "Starting", format!("{name} is starting.")),
+            GameState::Closing { .. } => (CardStatus::Blocked, "Closing", format!("{name} is still closing.")),
+            _ => (CardStatus::Blocked, "Busy", format!("{name} is starting or closing.")),
+        };
+        card.status = status;
+        card.status_text = text.into();
+        card.detail = detail.into();
+        card.can_play = false;
+        match gate {
+            Gate::SameInstanceRunning { .. } => {
+                card.can_open = true;
+                card.open_label = "Show MO2".into();
+            }
+            Gate::OtherInstanceRunning { .. } => card.can_open = false,
+            Gate::Clear => card.can_open = true,
+        }
         return card;
     }
     match gate {
@@ -147,6 +170,7 @@ mod tests {
             running,
             all,
             starting: false,
+            game: GameState::NotRunning,
             profiles: ModelRc::default(),
         })
     }
@@ -213,5 +237,55 @@ mod tests {
         let c = card(&all[0], vec![issue(Severity::Warning, "Profile \"X\" no longer exists.")], &[], &all);
         assert_eq!(c.status, CardStatus::Ready);
         assert!(!c.detail_is_error && c.can_play);
+    }
+
+    fn card_with_game(
+        inst: &Installation,
+        running: &[RunningProcess],
+        all: &[Installation],
+        game: GameState,
+    ) -> InstallCard {
+        let inspection = Inspection { install: None, issues: vec![] };
+        build(CardInput {
+            inst,
+            inspection: Some(&inspection),
+            art: Art::default(),
+            running,
+            all,
+            starting: false,
+            game,
+            profiles: ModelRc::default(),
+        })
+    }
+
+    #[test]
+    fn game_states_block_play_with_a_clear_reason() {
+        let all = installs();
+        let cases = [
+            (GameState::Running { pid: 1 }, CardStatus::Running, "Playing", "is running"),
+            (GameState::Starting { pid: 1 }, CardStatus::Starting, "Starting", "is starting"),
+            (GameState::Closing { pid: 1 }, CardStatus::Blocked, "Closing", "is still closing"),
+            (GameState::Busy { pid: 1 }, CardStatus::Blocked, "Busy", "starting or closing"),
+        ];
+        for (game, status, text, detail) in cases {
+            let c = card_with_game(&all[0], &[], &all, game);
+            assert_eq!(c.status, status, "{game:?}");
+            assert_eq!(c.status_text, text);
+            assert!(c.detail.contains(detail), "{}", c.detail);
+            assert!(!c.can_play, "{game:?} must block Play");
+            assert!(c.can_open, "MO2 can still be opened");
+        }
+    }
+
+    #[test]
+    fn closing_game_with_mo2_open_offers_show_mo2() {
+        let all = installs();
+        let running = [mo2(r"C:\Modlists\ProjectUltrapunk\ModOrganizer.exe")];
+        let c = card_with_game(&all[0], &running, &all, GameState::Closing { pid: 9 });
+        assert_eq!(c.open_label, "Show MO2");
+        assert!(!c.can_play);
+        // A different modlist's MO2 still blocks opening this one.
+        let c = card_with_game(&all[1], &running, &all, GameState::Running { pid: 9 });
+        assert!(!c.can_open);
     }
 }

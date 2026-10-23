@@ -40,6 +40,60 @@ pub struct Controller {
     pub steam: steam::SteamDraft,
     pub confirm: Option<actions::Pending>,
     pub watches: Vec<Watch>,
+    pub games: Games,
+}
+
+/// What each installation's game is doing, with enough history to tell a
+/// game that is starting from one that is closing.
+#[derive(Default)]
+pub struct Games {
+    pub states: HashMap<Uuid, modlist_core::process::GameState>,
+    /// Game processes seen at all, and those seen with a window.
+    observed: HashSet<u32>,
+    windowed: HashSet<u32>,
+    /// When this launcher last started each installation's Play action.
+    launched: HashMap<Uuid, std::time::Instant>,
+}
+
+impl Games {
+    pub fn update(
+        &mut self,
+        installs: &[modlist_core::config::Installation],
+        inspections: &HashMap<Uuid, modlist_core::validate::Inspection>,
+    ) {
+        use modlist_core::process::GameState;
+        self.states.clear();
+        for inst in installs {
+            let Some(binary) = inspections.get(&inst.id).and_then(|i| launching::play_binary(inst, i)) else {
+                continue;
+            };
+            let recently_launched = self.launched.get(&inst.id).is_some_and(|t| t.elapsed() < Duration::from_secs(180));
+            let state = launching::game_state(&binary, |pid| {
+                if self.windowed.contains(&pid) {
+                    Some(true)
+                } else if self.observed.contains(&pid) || recently_launched {
+                    Some(false)
+                } else {
+                    None
+                }
+            });
+            if let Some(pid) = state.pid() {
+                self.observed.insert(pid);
+                if matches!(state, GameState::Running { .. }) {
+                    self.windowed.insert(pid);
+                }
+            }
+            self.states.insert(inst.id, state);
+        }
+    }
+
+    pub fn state(&self, id: Uuid) -> modlist_core::process::GameState {
+        self.states.get(&id).copied().unwrap_or(modlist_core::process::GameState::NotRunning)
+    }
+
+    pub fn launched(&mut self, id: Uuid) {
+        self.launched.insert(id, std::time::Instant::now());
+    }
 }
 
 pub struct Watch {
@@ -87,6 +141,7 @@ pub fn run() -> i32 {
         steam: Default::default(),
         confirm: None,
         watches: Vec::new(),
+        games: Games::default(),
     }));
     c.borrow_mut().refresh_cards();
     wire(&ui, &c);
@@ -102,6 +157,8 @@ pub fn run() -> i32 {
             if let Ok(mut c) = c.try_borrow_mut() {
                 c.running = running_mo2();
                 c.state.inspect_all();
+                let c = &mut *c;
+                c.games.update(&c.state.config.installations, &c.state.inspections);
                 c.refresh_cards();
             }
         });
@@ -207,9 +264,16 @@ fn launch(c: &Shared, id: &str, mode: LaunchMode) {
     let Some(uuid) = parse_id(id) else { return };
     ctl.running = running_mo2();
     ctl.state.inspect(uuid);
-    let Some((inst, Some(insp))) = ctl.state.get(uuid) else { return };
+    let Some((inst, Some(_))) = ctl.state.get(uuid) else { return };
     let inst = inst.clone();
-    let result = launching::launch(&inst, insp, mode, &ctl.running, &ctl.state.config.installations);
+    let ctl = &mut *ctl;
+    ctl.games.update(&ctl.state.config.installations, &ctl.state.inspections);
+    let Some(insp) = ctl.state.inspections.get(&uuid) else { return };
+    let result =
+        launching::launch(&inst, insp, mode, &ctl.running, &ctl.state.config.installations, ctl.games.state(uuid));
+    if result.is_ok() && mode == LaunchMode::Play {
+        ctl.games.launched(uuid);
+    }
     match result {
         Ok(Outcome::Focused) => {}
         Ok(Outcome::Started(mut child)) => {
@@ -302,6 +366,7 @@ impl Controller {
                 running: &self.running,
                 all: &self.state.config.installations,
                 starting: self.starting.contains(id),
+                game: self.games.state(*id),
                 profiles,
             }));
         }
