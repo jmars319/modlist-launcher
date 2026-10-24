@@ -78,11 +78,6 @@ export component Button inherits Rectangle {
     accessible-enabled: root.enabled;
     accessible-action-default => { if (root.enabled) { root.clicked(); } }
 
-    touch := TouchArea {
-        enabled: root.enabled;
-        mouse-cursor: pointer;
-        clicked => { root.clicked(); }
-    }
     focus := FocusScope {
         enabled: root.enabled;
         key-pressed(event) => {
@@ -92,6 +87,13 @@ export component Button inherits Rectangle {
             }
             reject
         }
+    }
+    // Above the FocusScope: a FocusScope takes the first press to gain focus
+    // and would swallow the click.
+    touch := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
     }
     Rectangle {
         visible: focus.has-focus;
@@ -137,11 +139,6 @@ export component Switch inherits Rectangle {
     accessible-enabled: root.enabled;
     accessible-action-default => { root.toggle(); }
 
-    touch := TouchArea {
-        enabled: root.enabled;
-        mouse-cursor: pointer;
-        clicked => { root.toggle(); }
-    }
     focus := FocusScope {
         enabled: root.enabled;
         key-pressed(event) => {
@@ -151,6 +148,13 @@ export component Switch inherits Rectangle {
             }
             reject
         }
+    }
+    // Above the FocusScope: a FocusScope takes the first press to gain focus
+    // and would swallow the click.
+    touch := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => { root.toggle(); }
     }
     HorizontalLayout {
         spacing: 10px;
@@ -218,11 +222,6 @@ export component CheckBox inherits Rectangle {
     accessible-enabled: root.enabled;
     accessible-action-default => { root.toggle(); }
 
-    touch := TouchArea {
-        enabled: root.enabled;
-        mouse-cursor: pointer;
-        clicked => { root.toggle(); }
-    }
     focus := FocusScope {
         enabled: root.enabled;
         key-pressed(event) => {
@@ -232,6 +231,13 @@ export component CheckBox inherits Rectangle {
             }
             reject
         }
+    }
+    // Above the FocusScope: a FocusScope takes the first press to gain focus
+    // and would swallow the click.
+    touch := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => { root.toggle(); }
     }
     HorizontalLayout {
         spacing: 8px;
@@ -305,14 +311,6 @@ export component ComboBox inherits Rectangle {
     accessible-enabled: root.enabled;
     accessible-action-default => { if (root.enabled) { popup.show(); } }
 
-    touch := TouchArea {
-        enabled: root.enabled;
-        mouse-cursor: pointer;
-        clicked => {
-            focus.focus();
-            popup.show();
-        }
-    }
     focus := FocusScope {
         enabled: root.enabled;
         key-pressed(event) => {
@@ -329,6 +327,16 @@ export component ComboBox inherits Rectangle {
                 return accept;
             }
             reject
+        }
+    }
+    // Above the FocusScope: a FocusScope takes the first press to gain focus
+    // and would swallow the click.
+    touch := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => {
+            focus.focus();
+            popup.show();
         }
     }
     Rectangle {
@@ -531,11 +539,6 @@ export component ActionItem inherits Rectangle {
     accessible-enabled: root.enabled;
     accessible-action-default => { if (root.enabled) { root.clicked(); } }
 
-    touch := TouchArea {
-        enabled: root.enabled;
-        mouse-cursor: pointer;
-        clicked => { root.clicked(); }
-    }
     focus := FocusScope {
         enabled: root.enabled;
         key-pressed(event) => {
@@ -545,6 +548,13 @@ export component ActionItem inherits Rectangle {
             }
             reject
         }
+    }
+    // Above the FocusScope: a FocusScope takes the first press to gain focus
+    // and would swallow the click.
+    touch := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
     }
     Rectangle {
         visible: focus.has-focus;
