@@ -193,3 +193,26 @@ fn game_state_tells_windowed_from_windowless() {
     }
     assert_eq!(crate::launching::game_state(&hidden, |_| None), GameState::NotRunning);
 }
+
+#[test]
+fn shortcut_round_trip() {
+    use super::shell::{Shortcut, create_shortcut, read_shortcut};
+    let dir = std::env::temp_dir().join(format!("modlist-lnk-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("Witcher 3 Ascended.lnk");
+    let target = dir.join("modlist-launcher.exe");
+    std::fs::write(&target, b"").unwrap();
+    let s = Shortcut {
+        target: &target,
+        arguments: "--launch 5f0c",
+        working_directory: &dir,
+        icon: None,
+        description: "test",
+    };
+    create_shortcut(&path, &s, false).unwrap();
+    let (got_target, args) = read_shortcut(&path).unwrap();
+    // The shell may hand back the long form of an 8.3 temp path.
+    assert_eq!(std::fs::canonicalize(&got_target).unwrap(), std::fs::canonicalize(&target).unwrap());
+    assert_eq!(modlist_core::cli::shortcut_target(&got_target, &args), Some("5f0c".into()));
+    let _ = std::fs::remove_dir_all(&dir);
+}

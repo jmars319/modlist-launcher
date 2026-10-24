@@ -68,6 +68,19 @@ pub fn parse<I: IntoIterator<Item = OsString>>(args: I) -> Result<Command, CliEr
     }
 }
 
+/// The installation a shortcut starts, when it is a shortcut to this
+/// launcher: `program` is its target and `arguments` its command line.
+pub fn shortcut_target(program: &std::path::Path, arguments: &str) -> Option<String> {
+    if !crate::paths::file_name_eq(program, "modlist-launcher.exe") {
+        return None;
+    }
+    let args = crate::launch::split_command_line(arguments);
+    match parse(std::iter::once(OsString::new()).chain(args.into_iter().map(OsString::from))) {
+        Ok(Command::Launch { target, .. }) => Some(target),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -110,5 +123,16 @@ mod tests {
         assert_eq!(p(&["--help"]), Ok(Command::Help));
         assert_eq!(p(&["--restore-steam"]), Ok(Command::RestoreSteam));
         assert_eq!(p(&["--restore-steam", "x"]), Err(CliError::Unknown("x".into())));
+    }
+
+    #[test]
+    fn recognizes_launcher_shortcuts() {
+        use std::path::Path;
+        let exe = Path::new(r"C:\Users\me\AppData\Local\Programs\Modlist Launcher\modlist-launcher.exe");
+        assert_eq!(shortcut_target(exe, "--launch 5f0c"), Some("5f0c".into()));
+        assert_eq!(shortcut_target(exe, r#"--open "Witcher 3 Ascended""#), Some("Witcher 3 Ascended".into()));
+        assert_eq!(shortcut_target(exe, ""), None);
+        assert_eq!(shortcut_target(exe, "--steam 5f0c -- game.exe"), None);
+        assert_eq!(shortcut_target(Path::new(r"C:\Modlists\ModOrganizer.exe"), "--launch 5f0c"), None);
     }
 }

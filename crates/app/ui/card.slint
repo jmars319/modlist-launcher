@@ -34,6 +34,36 @@ component StatusPill inherits Rectangle {
     }
 }
 
+// Something set up for this modlist outside the launcher: Steam's Play
+// button or a shortcut. Shown only when it is set up.
+component SetupChip inherits Rectangle {
+    in property <string> label;
+    height: 20px;
+    width: row.preferred-width + 16px;
+    border-radius: self.height / 2;
+    background: Theme.dark ? #ffffff14 : #0000000d;
+    accessible-role: none;
+    row := HorizontalLayout {
+        alignment: center;
+        spacing: 5px;
+        Rectangle {
+            y: (parent.height - self.height) / 2;
+            width: 6px;
+            height: 6px;
+            border-radius: 3px;
+            background: Theme.ready;
+        }
+        Text {
+            text: root.label;
+            font-size: 11px;
+            font-weight: 600;
+            color: Theme.secondary-text;
+            vertical-alignment: center;
+            accessible-role: none;
+        }
+    }
+}
+
 component Artwork inherits Rectangle {
     in property <InstallCard> card;
     clip: true;
@@ -117,7 +147,7 @@ export component Card inherits Rectangle {
 
     accessible-role: groupbox;
     accessible-label: card.name + ", " + card.game + ", " + card.status-text;
-    accessible-description: card.detail;
+    accessible-description: card.detail + (card.detail != "" && card.setup-text != "" ? " " : "") + card.setup-text;
 
     hover := TouchArea { }
 
@@ -147,6 +177,15 @@ export component Card inherits Rectangle {
                     color: Theme.secondary-text;
                     overflow: elide;
                     accessible-role: none;
+                }
+                // Reserved even when empty so cards in a row line up.
+                HorizontalLayout {
+                    height: 20px;
+                    spacing: 6px;
+                    alignment: start;
+                    if root.card.steam-linked: SetupChip { label: "Steam Play"; }
+                    if root.card.desktop-shortcut: SetupChip { label: "Desktop"; }
+                    if root.card.start-menu-shortcut: SetupChip { label: "Start menu"; }
                 }
                 Rectangle {
                     height: 34px;
