@@ -61,49 +61,49 @@ pub fn restore_steam() -> i32 {
         .iter()
         .filter_map(|i| i.steam_hook.clone().map(|h| (i.id, i.name.clone(), h)))
         .collect();
-    if hooked.is_empty() {
+    // Steam games still pointing at the launcher without a modlist recording
+    // it, such as one left behind by an older version.
+    let orphans = state.steam.as_ref().map(|s| crate::steam_hooks::find_orphans(s, &state.config)).unwrap_or_default();
+    if hooked.is_empty() && orphans.is_empty() {
         return 0;
     }
-    let names = hooked.iter().map(|(_, n, _)| n.as_str()).collect::<Vec<_>>().join(", ");
+    let names = hooked
+        .iter()
+        .map(|(_, n, _)| n.clone())
+        .chain(orphans.iter().map(|o| o.label()))
+        .collect::<Vec<_>>()
+        .join(", ");
     let mut problems = Vec::new();
+    let mut skipped = false;
     for (id, name, hook) in &hooked {
-        let result = loop {
-            match crate::steam_hooks::restore(
-                hook,
-                state.steam.as_ref(),
-                state.data(),
-                platform::steam::is_running(),
-                |l| state.log(l),
-            ) {
-                Err(crate::steam_hooks::RestoreError::SteamRunning) => {
-                    let retry = prompt(
-                        "Exit Steam to finish",
-                        &format!(
-                            "Steam's Play button still starts {names} through Modlist Launcher. Exit Steam completely (Steam menu > Exit), then choose Retry to put back the previous launch options. If you skip, change them yourself in Steam: right-click the game > Properties > General > Launch Options."
-                        ),
-                        "Retry",
-                        "Skip",
-                    );
-                    if !retry {
-                        break Err("skipped while Steam was running".to_string());
-                    }
-                }
-                other => break other.map_err(|e| e.to_string()),
-            }
-        };
-        match result {
-            Ok(_) => {
+        match retry_while_steam_runs(&names, |running| {
+            crate::steam_hooks::restore(hook, state.steam.as_ref(), state.data(), running, |l| state.log(l))
+        }) {
+            Ok(()) => {
                 if let Some(inst) = state.config.find_mut(*id) {
                     inst.steam_hook = None;
                 }
             }
             Err(e) => {
+                skipped = e == SKIPPED;
                 state.log(&format!("restore-steam: {name}: {e}"));
                 problems.push(format!("{name}: {e}"));
-                if e.starts_with("skipped") {
+                if skipped {
                     break;
                 }
             }
+        }
+    }
+    for orphan in &orphans {
+        if skipped {
+            break;
+        }
+        if let Err(e) = retry_while_steam_runs(&names, |running| {
+            crate::steam_hooks::restore_orphan(orphan, state.data(), running, |l| state.log(l))
+        }) {
+            skipped = e == SKIPPED;
+            state.log(&format!("restore-steam: {}: {e}", orphan.label()));
+            problems.push(format!("{}: {e}", orphan.label()));
         }
     }
     let _ = state.save();
@@ -113,11 +113,43 @@ pub fn restore_steam() -> i32 {
     show_message(
         "Steam launch options not restored",
         &format!(
-            "{}\n\nIn Steam, right-click the game > Properties > General > Launch Options, and clear the Modlist Launcher entry.",
-            problems.join("\n")
+            "{}
+
+In Steam, right-click the game > Properties > General > Launch Options, and clear the Modlist Launcher entry.",
+            problems.join(
+                "
+"
+            )
         ),
     );
     1
+}
+
+const SKIPPED: &str = "skipped while Steam was running";
+
+/// Runs one restore, asking the user to exit Steam and retry while it runs.
+fn retry_while_steam_runs(
+    names: &str,
+    mut run: impl FnMut(bool) -> Result<crate::steam_hooks::Restored, crate::steam_hooks::RestoreError>,
+) -> Result<(), String> {
+    loop {
+        match run(platform::steam::is_running()) {
+            Err(crate::steam_hooks::RestoreError::SteamRunning) => {
+                let retry = prompt(
+                    "Exit Steam to finish",
+                    &format!(
+                        "Steam's Play button still starts {names} through Modlist Launcher. Exit Steam completely (Steam menu > Exit), then choose Retry to put back the previous launch options. If you skip, change them yourself in Steam: right-click the game > Properties > General > Launch Options."
+                    ),
+                    "Retry",
+                    "Skip",
+                );
+                if !retry {
+                    return Err(SKIPPED.into());
+                }
+            }
+            other => return other.map(|_| ()).map_err(|e| e.to_string()),
+        }
+    }
 }
 
 fn find<'a>(state: &'a AppState, target: &str) -> Result<&'a Installation, String> {

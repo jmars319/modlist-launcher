@@ -28,6 +28,44 @@ pub fn get_launch_options(text: &str, app_id: u32) -> Result<String, LaunchOptio
     Ok(apps.path(&[&app_id.to_string(), "LaunchOptions"]).and_then(Value::as_str).unwrap_or_default().to_string())
 }
 
+/// The installation id in launch options that start Modlist Launcher
+/// (`"…\modlist-launcher.exe" --steam <id> -- %command%`), or `None` for
+/// anything else.
+pub fn launcher_target(value: &str) -> Option<String> {
+    let args = crate::launch::split_command_line(value);
+    let program = args.first()?;
+    if !crate::paths::file_name_eq(Path::new(program), "modlist-launcher.exe") {
+        return None;
+    }
+    let at = args.iter().position(|a| a == "--steam")?;
+    args.get(at + 1).filter(|id| !id.is_empty() && *id != "--").cloned()
+}
+
+/// Every app in this account's settings whose launch options start Modlist
+/// Launcher, with the installation id each one names.
+pub fn launcher_connections(text: &str) -> Result<Vec<(u32, String)>, LaunchOptionsError> {
+    let doc = vdf::parse(text)?;
+    let apps = apps(&doc).ok_or(LaunchOptionsError::UnexpectedLayout)?;
+    Ok(apps
+        .children()
+        .iter()
+        .filter_map(|node| {
+            let app_id = node.key.parse().ok()?;
+            let value = node.value.get("LaunchOptions")?.as_str()?;
+            launcher_target(value).map(|target| (app_id, target))
+        })
+        .collect())
+}
+
+/// The launch options an app had in an older copy of the settings file, if
+/// that copy lists the app and its value did not start Modlist Launcher.
+pub fn original_launch_options(backup_text: &str, app_id: u32) -> Option<String> {
+    let doc = vdf::parse(backup_text).ok()?;
+    let app = apps(&doc)?.get(&app_id.to_string())?;
+    let value = app.get("LaunchOptions").and_then(Value::as_str).unwrap_or_default();
+    launcher_target(value).is_none().then(|| value.to_string())
+}
+
 /// Returns the new file text with `LaunchOptions` for `app_id` set to `value`.
 pub fn set_launch_options(text: &str, app_id: u32, value: &str) -> Result<String, LaunchOptionsError> {
     let doc = vdf::parse(text)?;
@@ -152,6 +190,36 @@ mod tests {
     fn refuses_unexpected_files() {
         assert_eq!(set_launch_options("\"Other\" { }", 1, "x"), Err(LaunchOptionsError::UnexpectedLayout));
         assert!(matches!(set_launch_options("\"broken\" {", 1, "x"), Err(LaunchOptionsError::Parse(_))));
+    }
+
+    #[test]
+    fn recognizes_launcher_launch_options() {
+        let ours = wrapper_launch_options(
+            Path::new(r"C:\Users\me\AppData\Local\Programs\Modlist Launcher\modlist-launcher.exe"),
+            "3f5bee94",
+        );
+        assert_eq!(launcher_target(&ours).as_deref(), Some("3f5bee94"));
+        assert_eq!(launcher_target("-skipStartScreen"), None);
+        assert_eq!(launcher_target(r#""C:\Tools\other.exe" --steam x -- %command%"#), None);
+        assert_eq!(launcher_target(r#""C:\x\modlist-launcher.exe" --steam -- %command%"#), None);
+        assert_eq!(launcher_target(""), None);
+    }
+
+    #[test]
+    fn lists_launcher_connections_and_originals() {
+        let ours = wrapper_launch_options(Path::new(r"C:\L\modlist-launcher.exe"), "abc");
+        let text = set_launch_options(&set_launch_options(SAMPLE, 292030, &ours).unwrap(), 499450, &ours).unwrap();
+        let mut found = launcher_connections(&text).unwrap();
+        found.sort();
+        assert_eq!(found, vec![(292030, "abc".to_string()), (499450, "abc".to_string())]);
+        // 1091500 keeps its own options, so it is not a launcher connection.
+        assert!(!found.iter().any(|(app, _)| *app == 1091500));
+
+        // The untouched copy still knows each app's original value.
+        assert_eq!(original_launch_options(SAMPLE, 1091500).as_deref(), Some("-skipStartScreen"));
+        assert_eq!(original_launch_options(SAMPLE, 292030).as_deref(), Some(""));
+        assert_eq!(original_launch_options(SAMPLE, 499450), None, "not listed in that copy");
+        assert_eq!(original_launch_options(&text, 292030), None, "that copy already points here");
     }
 
     #[test]

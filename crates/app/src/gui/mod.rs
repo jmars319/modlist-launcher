@@ -41,6 +41,7 @@ pub struct Controller {
     pub confirm: Option<actions::Pending>,
     pub watches: Vec<Watch>,
     pub games: Games,
+    pub orphans: Vec<crate::steam_hooks::Orphan>,
 }
 
 /// What each installation's game is doing, with enough history to tell a
@@ -142,8 +143,25 @@ pub fn run() -> i32 {
         confirm: None,
         watches: Vec::new(),
         games: Games::default(),
+        orphans: Vec::new(),
     }));
     c.borrow_mut().refresh_cards();
+    {
+        let mut ctl = c.borrow_mut();
+        ctl.refresh_orphans();
+        if !ctl.orphans.is_empty() && ui.global::<Ui>().get_banner_text().is_empty() {
+            let n = ctl.orphans.len();
+            ctl.banner(
+                &format!(
+                    "{} still start{} Modlist Launcher from Steam's Play button without a modlist. Open Settings to restore {}.",
+                    if n == 1 { ctl.orphans[0].label() } else { format!("{n} Steam games") },
+                    if n == 1 { "s" } else { "" },
+                    if n == 1 { "it" } else { "them" },
+                ),
+                true,
+            );
+        }
+    }
     wire(&ui, &c);
     edit::wire(&ui, &c);
     scan::wire(&ui, &c);
@@ -241,8 +259,30 @@ fn wire(ui: &AppWindow, c: &Shared) {
     {
         let c = c.clone();
         g.on_open_settings(move || {
-            if let Some(ui) = c.borrow().ui.upgrade() {
+            let mut ctl = c.borrow_mut();
+            ctl.refresh_orphans();
+            if let Some(ui) = ctl.ui() {
+                ui.global::<Ui>().set_orphans_status("".into());
                 ui.global::<Ui>().set_sheet("settings".into());
+            }
+        });
+    }
+    {
+        let c = c.clone();
+        g.on_restore_orphan(move |i| {
+            let mut ctl = c.borrow_mut();
+            let result = ctl.restore_orphan(i.max(0) as usize);
+            ctl.refresh_orphans();
+            if let Some(ui) = ctl.ui() {
+                let g = ui.global::<Ui>();
+                g.set_orphans_status_error(result.is_err());
+                g.set_orphans_status(result.unwrap_or_else(|e| e).into());
+                if ctl.orphans.is_empty()
+                    && g.get_banner_error()
+                    && g.get_banner_text().contains("Open Settings to restore")
+                {
+                    g.set_banner_text("".into());
+                }
             }
         });
     }
@@ -301,6 +341,38 @@ impl Controller {
 
     pub fn hwnd(&self) -> Option<HWND> {
         window_hwnd(&self.ui()?)
+    }
+
+    /// Re-reads which Steam games still point here without a modlist.
+    pub fn refresh_orphans(&mut self) {
+        self.orphans = self
+            .state
+            .steam
+            .as_ref()
+            .map(|s| crate::steam_hooks::find_orphans(s, &self.state.config))
+            .unwrap_or_default();
+        if let Some(ui) = self.ui() {
+            let labels: Vec<SharedString> = self.orphans.iter().map(|o| o.label().into()).collect();
+            ui.global::<Ui>().set_steam_orphans(Rc::new(VecModel::from(labels)).into());
+        }
+    }
+
+    fn restore_orphan(&mut self, index: usize) -> Result<String, String> {
+        let orphan = self.orphans.get(index).cloned().ok_or("That Steam game was already restored.")?;
+        let outcome =
+            crate::steam_hooks::restore_orphan(&orphan, self.state.data(), crate::platform::steam::is_running(), |l| {
+                self.state.log(l)
+            })
+            .map_err(|e| e.to_string())?;
+        Ok(match outcome {
+            crate::steam_hooks::Restored::Restored => format!("Restored {}'s launch options.", orphan.label()),
+            crate::steam_hooks::Restored::LeftAsIs => {
+                format!(
+                    "{}'s launch options were changed outside the launcher, so they were left as they are.",
+                    orphan.label()
+                )
+            }
+        })
     }
 
     pub fn banner(&self, text: &str, error: bool) {

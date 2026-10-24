@@ -82,6 +82,13 @@ export global Ui {
     callback open-settings();
     callback settings-changed();
     callback open-data-folder();
+
+    // Steam games whose Play button still starts the launcher although no
+    // modlist records the connection.
+    in-out property <[string]> steam-orphans;
+    in-out property <string> orphans-status;
+    in-out property <bool> orphans-status-error;
+    callback restore-orphan(int);
     callback confirm-accepted();
     callback close-sheet();
 }

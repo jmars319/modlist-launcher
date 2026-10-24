@@ -9,7 +9,7 @@ Steam lets a game's launch options name a different program to run, with `%comma
 ## Set it up
 
 1. In the launcher, open **••• > Steam Play Button…** on the modlist's card.
-2. Check the Steam account and app ID. Both are detected from MO2's game folder.
+2. Check the Steam account and app ID. The app ID is detected from the Steam ID on MO2's Play executable, then from MO2's game folder and game name. Steam IDs on modding tools (for example the Creation Kit's FaceGen Generator, Steam app 1946160) are never used.
 3. Exit Steam completely (Steam menu > Exit). Steam rewrites its settings when it closes, so changes made while it runs would be lost.
 4. Press **Apply**.
 
@@ -29,7 +29,9 @@ Steam must be closed for any of these.
 
 - **••• > Steam Play Button… > Restore Previous** puts back the launch options the game had before.
 - **Removing a modlist** from the launcher restores its launch options first (**Restore and Remove**). If Steam is running, nothing is removed until you exit Steam and try again.
-- **Uninstalling the launcher** restores every connected game's launch options. If Steam is running, the uninstaller asks you to exit it and choose Retry. If you skip, it tells you which games to fix by hand.
+- **Changing the app ID or account** and pressing Apply restores the old game's launch options before connecting the new one.
+- **Settings > Steam games still pointing here** lists any Steam game whose Play button starts the launcher although no modlist records it (for example one left behind by an older version, or skipped when a modlist was removed). **Restore** puts back the value from the newest backup in `steam-backups\` that predates the launcher, or clears it if there is none. The launcher shows a notice at startup when it finds one.
+- **Uninstalling the launcher** restores every connected game's launch options, including the ones listed in Settings. If Steam is running, the uninstaller asks you to exit it and choose Retry. If you skip, it tells you which games to fix by hand.
 
 The launcher only restores a value it set itself. If you changed a game's launch options in Steam afterwards, they are left as they are.
 

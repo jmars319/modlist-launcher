@@ -184,6 +184,8 @@ impl Controller {
             self.banner(&format!("Removed {} from the launcher.{steam_note}", inst.name), false);
         }
         self.refresh_cards();
+        // A Steam game skipped on removal still points here; Settings lists it.
+        self.refresh_orphans();
     }
 
     /// Creates a shortcut to the launcher (`id` = None) or to one modlist.

@@ -398,6 +398,46 @@ export component SettingsSheet inherits Sheet {
             clicked => { Ui.launcher-shortcut(false); }
         }
     }
+    if Ui.steam-orphans.length > 0 || Ui.orphans-status != "": VerticalLayout {
+        spacing: 8px;
+        Rectangle { height: 1px; background: Theme.separator; }
+        FieldLabel { text: "Steam games still pointing here"; }
+        Text {
+            text: "Steam's Play button for these games starts Modlist Launcher, but no modlist uses them. Restore puts back what they had before, or clears it if the launcher never saw it. Steam must be closed.";
+            font-size: 12px;
+            color: Theme.secondary-text;
+            wrap: word-wrap;
+        }
+        if Ui.steam-orphans.length > 0: ScrollView {
+            preferred-height: min(108px, Ui.steam-orphans.length * 36px);
+            VerticalLayout {
+                spacing: 4px;
+                padding-right: Ui.steam-orphans.length > 3 ? 14px : 0px;
+                for label[i] in Ui.steam-orphans: HorizontalLayout {
+                    spacing: 8px;
+                    Text {
+                        horizontal-stretch: 1;
+                        text: label;
+                        color: Theme.text;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                    Button {
+                        horizontal-stretch: 0;
+                        text: "Restore";
+                        accessible-label: "Restore " + label;
+                        clicked => { Ui.restore-orphan(i); }
+                    }
+                }
+            }
+        }
+        if Ui.orphans-status != "": Text {
+            text: Ui.orphans-status;
+            font-size: 12px;
+            color: Ui.orphans-status-error ? Theme.danger : Theme.ready;
+            wrap: word-wrap;
+        }
+    }
     Rectangle { height: 1px; background: Theme.separator; }
     FieldLabel { text: "Launcher data"; }
     HorizontalLayout {

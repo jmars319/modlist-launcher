@@ -152,12 +152,12 @@ pub fn new_installation(
 ) -> Installation {
     let mut inst = Installation::new(suggest_name(&exe, install), exe);
     if let Some(install) = install {
-        if let Some(e) = install.default_play_executable() {
-            inst.play_action = PlayAction::Executable { title: e.title.clone() };
+        let play_title = install.default_play_executable().map(|e| e.title.clone());
+        if let Some(title) = &play_title {
+            inst.play_action = PlayAction::Executable { title: title.clone() };
         }
-        inst.steam_app_id = install.executables.iter().find_map(|e| e.steam_app_id).or_else(|| {
-            install.game_path.as_deref().zip(steam).and_then(|(g, s)| s.app_for_game_path(g)).map(|a| a.app_id)
-        });
+        let installed = steam.map(|s| s.installed_apps()).unwrap_or_default();
+        inst.steam_app_id = modlist_core::steam::guess_app_id(install, play_title.as_deref(), &installed);
     }
     inst
 }
