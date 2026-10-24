@@ -26,6 +26,7 @@ Modlist Launcher is an independent project. It is not affiliated with the Mod Or
   - Per-modlist shortcuts that start a modlist directly (`--launch <id>`).
 - **Setup at a glance.** Small chips under each card's game name show what is set up for it: **Steam Play** (Steam's Play button starts it), **Desktop** and **Start menu** (a shortcut to it in that folder, found by reading the `.lnk` files there).
 - **Steam Play button** (optional): make Steam's own Play button start a modlist through MO2. Hold Shift while pressing Play to choose with or without mods. See [docs/steam-play-button.md](docs/steam-play-button.md).
+- **Vaexil look:** the JAMARQ/Vaexil theme (dark canvas, cyan accent, pill buttons) in both light and dark ([ADR 0002](docs/adr/0002-vaexil-theme.md)).
 - **Settings:** follows the Windows light/dark setting (or force either), high-DPI aware, keyboard and screen-reader friendly.
 - **No telemetry, ads, accounts or network access. No administrator rights.**
 
@@ -110,4 +111,4 @@ This builds in `dist/staging` and writes the zip, installer and `SHA256SUMS.txt`
 
 ## License
 
-GPL-3.0-only. See [LICENSE](LICENSE). Mod Organizer 2 is also GPL-3.0. This launcher only starts it as a separate program and does not include any of its code.
+GPL-3.0-only. See [LICENSE](LICENSE). The embedded Geist and Geist Mono fonts are under the SIL Open Font License 1.1 ([assets/fonts/OFL.txt](assets/fonts/OFL.txt)). Mod Organizer 2 is also GPL-3.0. This launcher only starts it as a separate program and does not include any of its code.

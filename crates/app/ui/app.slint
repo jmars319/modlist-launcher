@@ -1,5 +1,10 @@
-import { Button, ScrollView, Palette } from "std-widgets.slint";
-import { Theme, Message } from "theme.slint";
+// Geist (OFL-1.1, assets/fonts/OFL.txt), embedded so text matches vaexil.tv.
+import "../../../assets/fonts/Geist-Regular.ttf";
+import "../../../assets/fonts/Geist-SemiBold.ttf";
+import "../../../assets/fonts/Geist-Bold.ttf";
+import "../../../assets/fonts/GeistMono-Regular.ttf";
+import { ScrollView, Palette } from "std-widgets.slint";
+import { Button, Theme, Message } from "theme.slint";
 import { CardStatus, InstallCard, ScanRow, Ui, EditState, ScanState, SteamState } from "state.slint";
 import { Card } from "card.slint";
 import { ActionsSheet, ConfirmSheet, EditSheet, ScanSheet, SettingsSheet, SteamSheet } from "sheets.slint";
@@ -11,9 +16,9 @@ component Banner inherits Rectangle {
     in property <bool> error;
     callback dismiss();
     border-radius: 10px;
-    background: (error ? Theme.danger : Palette.accent-background).transparentize(86%);
+    background: (error ? Theme.danger : Theme.accent).transparentize(88%);
     border-width: 1px;
-    border-color: (error ? Theme.danger : Palette.accent-background).transparentize(55%);
+    border-color: (error ? Theme.danger : Theme.accent).transparentize(55%);
     HorizontalLayout {
         padding: 10px;
         padding-left: 16px;
@@ -79,6 +84,7 @@ export component AppWindow inherits Window {
     min-height: 460px;
     background: Theme.window-background;
     default-font-size: 13px;
+    default-font-family: Theme.font-sans;
 
     property <bool> modal: Ui.sheet != "";
     property <length> gutter: 24px;
@@ -256,6 +262,7 @@ export component SteamChooser inherits Window {
     width: 440px;
     background: Theme.surface;
     default-font-size: 13px;
+    default-font-family: Theme.font-sans;
     forward-focus: scope;
 
     scope := FocusScope {
@@ -320,6 +327,7 @@ export component MessageWindow inherits Window {
     width: 440px;
     background: Theme.surface;
     default-font-size: 13px;
+    default-font-family: Theme.font-sans;
     forward-focus: ok-button;
 
     VerticalLayout {
@@ -363,6 +371,7 @@ export component PromptWindow inherits Window {
     width: 460px;
     background: Theme.surface;
     default-font-size: 13px;
+    default-font-family: Theme.font-sans;
     forward-focus: primary-button;
 
     VerticalLayout {
@@ -408,6 +417,7 @@ export component WaitWindow inherits Window {
     width: 440px;
     background: Theme.surface;
     default-font-size: 13px;
+    default-font-family: Theme.font-sans;
     forward-focus: cancel-button;
 
     VerticalLayout {

@@ -1,7 +1,7 @@
 # ADR 0001: Rust and Slint, with Slint's software renderer
 
 Date: 2026-10-17
-Status: accepted
+Status: accepted. The look (Cupertino, close to macOS) was replaced by the Vaexil theme in [ADR 0002](0002-vaexil-theme.md).
 
 ## Context
 

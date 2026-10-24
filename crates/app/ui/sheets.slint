@@ -1,5 +1,5 @@
-import { Button, CheckBox, ComboBox, LineEdit, ScrollView, Switch } from "std-widgets.slint";
-import { ActionItem, ButtonRow, FieldLabel, Messages, Sheet, Theme } from "theme.slint";
+import { LineEdit, ScrollView } from "std-widgets.slint";
+import { ActionItem, Button, ButtonRow, CheckBox, ComboBox, FieldLabel, Messages, Sheet, Switch, Theme } from "theme.slint";
 import { EditState, ScanState, SteamState, Ui } from "state.slint";
 
 component PathField inherits VerticalLayout {
@@ -285,7 +285,7 @@ export component SteamSheet inherits Sheet {
         Text {
             text: SteamState.current == "" ? "(none)" : SteamState.current;
             font-size: 12px;
-            font-family: "Consolas";
+            font-family: Theme.font-mono;
             color: Theme.text;
             wrap: word-wrap;
             accessible-label: "Current launch options: " + (SteamState.current == "" ? "none" : SteamState.current);
@@ -297,7 +297,7 @@ export component SteamSheet inherits Sheet {
         Text {
             text: SteamState.proposed;
             font-size: 12px;
-            font-family: "Consolas";
+            font-family: Theme.font-mono;
             color: Theme.text;
             wrap: word-wrap;
             accessible-label: "New launch options: " + SteamState.proposed;
