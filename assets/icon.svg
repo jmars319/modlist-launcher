@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <!-- Modlist Launcher's icon as a vector source: the drawing scripts/generate-icon.ps1 makes, with the same 256-unit geometry and colours. Change both together. -->
+  <defs>
+    <linearGradient id="tile" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="256" y2="256">
+      <stop offset="0" stop-color="#0b1628"/>
+      <stop offset="1" stop-color="#05070d"/>
+    </linearGradient>
+    <linearGradient id="edge" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="256" y2="256">
+      <stop offset="0" stop-color="#2f7bff"/>
+      <stop offset="1" stop-color="#ff3fd8"/>
+    </linearGradient>
+    <linearGradient id="play" gradientUnits="userSpaceOnUse" x1="94" y1="118" x2="150" y2="174">
+      <stop offset="0" stop-color="#2f7bff"/>
+      <stop offset="1" stop-color="#ff3fd8"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="240" height="240" rx="54" fill="url(#tile)" stroke="url(#edge)" stroke-width="5"/>
+  <rect x="78" y="52" width="128" height="116" rx="18" fill="#67e8f9" fill-opacity="0.352941"/>
+  <rect x="64" y="70" width="128" height="116" rx="18" fill="#67e8f9" fill-opacity="0.627451"/>
+  <rect x="50" y="88" width="128" height="116" rx="18" fill="#f8fafc"/>
+  <polygon points="98,118 98,174 146,146" fill="url(#play)"/>
+</svg>

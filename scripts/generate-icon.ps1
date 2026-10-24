@@ -1,5 +1,7 @@
 # Draws the app icon (stacked cards with a play glyph) and writes
 # assets/icon-256.png plus a multi-size assets/app.ico. Windows only.
+# assets/icon.svg is the same drawing as a vector source, for sizes above
+# 256 px and for brand use; change both together.
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Drawing
 
