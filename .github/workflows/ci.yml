@@ -49,6 +49,36 @@ jobs:
           $exe = Get-Item target/release/modlist-launcher.exe
           "modlist-launcher.exe: {0:N1} MB" -f ($exe.Length / 1MB) | Tee-Object -FilePath $env:GITHUB_STEP_SUMMARY -Append
 
+      # The smoke tests drive the release build's real window (screenshots and
+      # UI Automation) against throwaway data; the hosted runner's desktop
+      # session makes that possible.
+      - name: Smoke test, repaint after minimize and restore
+        shell: pwsh
+        run: ./scripts/smoke-minimize-restore.ps1
+
+      - name: Smoke test, arrow keys between cards
+        if: ${{ !cancelled() }}
+        shell: pwsh
+        run: ./scripts/smoke-arrow-keys.ps1
+
+      - name: Collect smoke screenshots
+        if: failure()
+        shell: pwsh
+        run: |
+          $out = Join-Path $env:RUNNER_TEMP 'smoke'
+          New-Item -ItemType Directory -Force $out | Out-Null
+          Get-ChildItem ([IO.Path]::GetTempPath()) -Directory -Filter 'modlist-*' |
+              ForEach-Object { Copy-Item $_.FullName (Join-Path $out $_.Name) -Recurse }
+
+      - name: Upload smoke screenshots
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-screenshots
+          path: ${{ runner.temp }}/smoke
+          if-no-files-found: ignore
+          retention-days: 7
+
   security:
     name: Dependency policy
     runs-on: ubuntu-latest
