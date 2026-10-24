@@ -14,6 +14,8 @@ export { Ui, EditState, ScanState, SteamState, CardStatus, InstallCard, ScanRow,
 component Banner inherits Rectangle {
     in property <string> text;
     in property <bool> error;
+    in property <string> action;
+    callback act();
     callback dismiss();
     border-radius: 10px;
     background: (error ? Theme.danger : Theme.accent).transparentize(88%);
@@ -31,6 +33,15 @@ component Banner inherits Rectangle {
             vertical-alignment: center;
             horizontal-stretch: 1;
             accessible-label: (root.error ? "Error: " : "") + root.text;
+        }
+        VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 0;
+            if root.action != "": Button {
+                text: root.action;
+                primary: true;
+                clicked => { root.act(); }
+            }
         }
         VerticalLayout {
             alignment: center;
@@ -199,7 +210,15 @@ export component AppWindow inherits Window {
                 Banner {
                     text: Ui.banner-text;
                     error: Ui.banner-error;
-                    dismiss => { Ui.banner-text = ""; }
+                    action: Ui.banner-action;
+                    act => { Ui.banner-action-clicked(); }
+                    dismiss => {
+                        // Cleared first, so a waiting message can take its place.
+                        let was-notice = Ui.banner-action != "";
+                        Ui.banner-text = "";
+                        Ui.banner-action = "";
+                        Ui.banner-dismissed(was-notice);
+                    }
                 }
             }
 

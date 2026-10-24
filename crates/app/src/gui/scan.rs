@@ -1,10 +1,11 @@
 //! Scan sheet: discovery runs on a worker thread; nothing is added until the
-//! user ticks candidates and confirms.
+//! user ticks candidates and confirms. At startup the saved scan folders are
+//! scanned quietly, and new modlists are announced in the banner.
 
 use std::path::PathBuf;
 use std::rc::Rc;
 
-use modlist_core::discovery::{self, Candidate, ScanOptions};
+use modlist_core::discovery::{self, Candidate, ScanOptions, ScanReport};
 use modlist_core::paths::same_path;
 use slint::{ComponentHandle, Model, VecModel};
 
@@ -17,6 +18,11 @@ pub struct ScanDraft {
     candidates: Vec<Candidate>,
     checked: Vec<bool>,
     timer: Option<slint::Timer>,
+    /// The startup scan's timer, its result until reviewed or dismissed, and
+    /// whether the banner is showing it (it waits behind another message).
+    startup_timer: Option<slint::Timer>,
+    startup: Option<ScanReport>,
+    startup_shown: bool,
 }
 
 pub fn wire(ui: &AppWindow, c: &Shared) {
@@ -67,6 +73,61 @@ pub fn wire(ui: &AppWindow, c: &Shared) {
     {
         let c = c.clone();
         g.on_add_selected(move || c.borrow_mut().add_selected());
+    }
+    {
+        let c = c.clone();
+        ui.global::<Ui>().on_banner_action_clicked(move || c.borrow_mut().review_new_modlists());
+    }
+    {
+        let c = c.clone();
+        ui.global::<Ui>().on_banner_dismissed(move |was_notice| {
+            let mut ctl = c.borrow_mut();
+            if was_notice {
+                ctl.dismiss_new_modlists();
+            } else {
+                ctl.show_pending_notice();
+            }
+        });
+    }
+}
+
+/// Scans the saved scan folders in the background when the window opens.
+/// Only announces; nothing is added without the user's OK.
+pub fn startup_scan(c: &Shared) {
+    let (roots, known) = {
+        let ctl = c.borrow();
+        let known: Vec<PathBuf> = ctl.state.config.installations.iter().map(|i| i.exe_path.clone()).collect();
+        (ctl.state.config.scan_roots.clone(), known)
+    };
+    if roots.is_empty() {
+        return;
+    }
+    let shared = Rc::downgrade(c);
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let report = discovery::scan(&roots, ScanOptions::default(), |p| known.iter().any(|k| same_path(k, p)));
+        let _ = tx.send(report);
+    });
+    let timer = slint::Timer::default();
+    timer.start(slint::TimerMode::Repeated, std::time::Duration::from_millis(250), move || {
+        let Some(c) = shared.upgrade() else { return };
+        let Ok(mut ctl) = c.try_borrow_mut() else { return };
+        let Ok(report) = rx.try_recv() else { return };
+        if let Some(t) = &ctl.scan.startup_timer {
+            t.stop();
+        }
+        ctl.announce_new_modlists(report);
+    });
+    c.borrow_mut().scan.startup_timer = Some(timer);
+}
+
+/// The banner text for modlists found at startup.
+fn new_modlists_text(names: &[&str]) -> String {
+    match names {
+        [] => String::new(),
+        [one] => format!("Found a new modlist in your scan folders: {one}."),
+        [a, b] => format!("Found 2 new modlists in your scan folders: {a} and {b}."),
+        more => format!("Found {} new modlists in your scan folders.", more.len()),
     }
 }
 
@@ -127,12 +188,86 @@ fn start(c: &Shared) {
 }
 
 impl Controller {
+    fn announce_new_modlists(&mut self, report: ScanReport) {
+        self.scan.startup = Some(report);
+        self.scan.startup_shown = false;
+        self.show_pending_notice();
+    }
+
+    /// Shows the startup notice if one is waiting and the banner is free. A
+    /// problem or other message already showing is never covered; the notice
+    /// follows once that one is dismissed.
+    pub fn show_pending_notice(&mut self) {
+        let Some(report) = &self.scan.startup else { return };
+        if self.scan.startup_shown {
+            return;
+        }
+        // Candidates already in the list may have been added since the scan began.
+        let names: Vec<&str> = report
+            .new_modlists(&self.state.config.dismissed_installs)
+            .into_iter()
+            .filter(|c| !self.state.config.contains_exe(&c.exe))
+            .map(|c| c.suggested_name.as_str())
+            .collect();
+        if names.is_empty() {
+            self.scan.startup = None;
+            return;
+        }
+        let text = new_modlists_text(&names);
+        let Some(ui) = self.ui() else { return };
+        let g = ui.global::<Ui>();
+        if !g.get_banner_text().is_empty() {
+            return;
+        }
+        g.set_banner_error(false);
+        g.set_banner_text(text.into());
+        g.set_banner_action("Review".into());
+        self.scan.startup_shown = true;
+    }
+
+    /// Opens the scan sheet on the startup results, with the new ones ticked.
+    fn review_new_modlists(&mut self) {
+        let Some(report) = self.scan.startup.take() else { return };
+        let new: Vec<PathBuf> =
+            report.new_modlists(&self.state.config.dismissed_installs).iter().map(|c| c.exe.clone()).collect();
+        let checked =
+            report.candidates.iter().map(|c| new.contains(&c.exe) && !self.state.config.contains_exe(&c.exe)).collect();
+        self.scan = ScanDraft { candidates: report.candidates, checked, ..Default::default() };
+        if let Some(ui) = self.ui() {
+            let g = ui.global::<Ui>();
+            g.set_banner_text("".into());
+            g.set_banner_action("".into());
+            let s = ui.global::<ScanState>();
+            s.set_scanning(false);
+            s.set_status("Found at startup in your scan folders. Tick the ones to add.".into());
+        }
+        self.show_roots();
+        self.show_rows();
+        self.open_sheet("scan");
+    }
+
+    /// Remembers the announced modlists so the notice does not come back.
+    fn dismiss_new_modlists(&mut self) {
+        let Some(report) = self.scan.startup.take() else { return };
+        let new: Vec<PathBuf> =
+            report.new_modlists(&self.state.config.dismissed_installs).iter().map(|c| c.exe.clone()).collect();
+        self.state.config.dismissed_installs.extend(new);
+        self.save_or_report();
+    }
+
     fn open_scan(&mut self) {
         if self.scan.candidates.is_empty() && self.scan.timer.as_ref().is_some_and(slint::Timer::running) {
             self.open_sheet("scan");
             return;
         }
-        self.scan = ScanDraft::default();
+        // The startup scan's result outlives a manual scan, so the banner's
+        // Review button keeps working.
+        self.scan = ScanDraft {
+            startup_timer: self.scan.startup_timer.take(),
+            startup: self.scan.startup.take(),
+            startup_shown: self.scan.startup_shown,
+            ..Default::default()
+        };
         if let Some(ui) = self.ui() {
             let g = ui.global::<ScanState>();
             g.set_rows(Rc::new(VecModel::<ScanRow>::default()).into());
@@ -225,5 +360,21 @@ impl Controller {
         }
         self.state.inspect_all();
         self.refresh_cards();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::new_modlists_text;
+
+    #[test]
+    fn names_new_modlists_in_the_banner() {
+        assert_eq!(new_modlists_text(&[]), "");
+        assert_eq!(new_modlists_text(&["Frostbound"]), "Found a new modlist in your scan folders: Frostbound.");
+        assert_eq!(
+            new_modlists_text(&["Frostbound", "Life in the Ruins"]),
+            "Found 2 new modlists in your scan folders: Frostbound and Life in the Ruins."
+        );
+        assert_eq!(new_modlists_text(&["a", "b", "c"]), "Found 3 new modlists in your scan folders.");
     }
 }

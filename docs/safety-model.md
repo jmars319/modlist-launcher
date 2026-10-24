@@ -9,6 +9,7 @@ The launcher's promise is that every Mod Organizer 2 installation stays exactly 
 | `ModOrganizer.exe` (existence, icon) | Validate the entry; card icon. |
 | `ModOrganizer.ini` | Game name and path, selected profile, configured executables, profile folder. |
 | `portable.txt`, `*.compiler_settings` (names only) | Portable detection; Wabbajack modlist name. |
+| Folder listings under your saved scan folders (5 levels deep, at most 20,000 folders, never inside an MO2 folder) | Scan on request, and once in the background each time the window opens, to notice new modlists. |
 | `profiles\*` (folder names only) | Profile picker. |
 | Game executables named by MO2 (existence, icon) | Play validation; card icon. |
 | Steam `appcache\librarycache\<appid>\*` | Card artwork, displayed only, never copied. |

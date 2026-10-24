@@ -19,6 +19,10 @@ pub struct Config {
     pub installations: Vec<Installation>,
     #[serde(default)]
     pub scan_roots: Vec<PathBuf>,
+    /// ModOrganizer.exe paths found at startup that the user dismissed, so
+    /// the new-modlist notice does not come back for them.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub dismissed_installs: Vec<PathBuf>,
 }
 
 impl Default for Config {
@@ -28,6 +32,7 @@ impl Default for Config {
             settings: Settings::default(),
             installations: Vec::new(),
             scan_roots: Vec::new(),
+            dismissed_installs: Vec::new(),
         }
     }
 }

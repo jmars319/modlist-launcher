@@ -21,6 +21,7 @@ Modlist Launcher is an independent project. It is not affiliated with the Mod Or
 - **Clear problems.** A missing exe, missing folder, removed MO2 executable or deleted profile is shown on the card, in plain language.
 - **Add, edit, rename, reorder and remove** installations. Removing one only removes it from the launcher.
 - **Scan folders** for portable MO2 installations. Scanning is read-only, and nothing is added until you tick the results and confirm.
+- **New modlists noticed at startup.** When the window opens, the saved scan folders are scanned in the background. New portable installs appear in a notice with **Review** (opens the scan results, new ones ticked) and **Dismiss** (stops the notice for those installs). A notice never covers another message; it waits until that one is dismissed.
 - **Shortcuts:**
   - Desktop and Start menu shortcuts for the launcher.
   - Per-modlist shortcuts that start a modlist directly (`--launch <id>`).
