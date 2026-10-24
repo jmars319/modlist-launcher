@@ -92,6 +92,14 @@ try {
     Start-Sleep -Milliseconds 1500
     $baseline = Capture $h
     $baseline.Save((Join-Path $work 'baseline.png'))
+    # A blank capture (no desktop to draw on, as in some CI sessions) would
+    # match every restore and pass; require the cards to be visible.
+    $plain = New-Object System.Drawing.Bitmap 1, 1
+    $plain.SetPixel(0, 0, $baseline.GetPixel(2, 2))
+    $content = DifferentPercent $baseline (New-Object System.Drawing.Bitmap $plain, $baseline.Width, $baseline.Height)
+    $plain.Dispose()
+    if ($content -lt 5) { throw ("The first screenshot is almost uniform ({0:N1}% differs from the background), so the window was not captured." -f $content) }
+    "baseline shows content: {0:N1}% differs from the background" -f $content
 
     $steps = @()
     for ($c = 1; $c -le $Cycles; $c++) { $steps += @{ Name = "minimize-restore-$c"; Show = 6; Wait = $MinimizedMs } }
