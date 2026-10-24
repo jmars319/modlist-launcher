@@ -43,6 +43,11 @@ export global Ui {
     in-out property <[InstallCard]> cards;
     in-out property <string> banner-text;
     in-out property <bool> banner-error;
+    /// Label of the banner's own button ("" for none), and its callbacks.
+    in-out property <string> banner-action;
+    callback banner-action-clicked();
+    /// `was-notice`: the banner had its own button, so it was the startup notice.
+    callback banner-dismissed(was-notice: bool);
     /// "", "edit", "scan", "steam", "settings", "confirm", "actions"
     in-out property <string> sheet;
     in-out property <int> appearance; // 0 system, 1 light, 2 dark

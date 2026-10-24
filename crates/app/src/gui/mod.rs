@@ -169,6 +169,7 @@ pub fn run() -> i32 {
     wire(&ui, &c);
     edit::wire(&ui, &c);
     scan::wire(&ui, &c);
+    scan::startup_scan(&c);
     steam::wire(&ui, &c);
     actions::wire(&ui, &c);
 
@@ -287,6 +288,7 @@ fn wire(ui: &AppWindow, c: &Shared) {
                     && g.get_banner_text().contains("Open Settings to restore")
                 {
                     g.set_banner_text("".into());
+                    ctl.show_pending_notice();
                 }
             }
         });
@@ -382,6 +384,7 @@ impl Controller {
 
     pub fn banner(&self, text: &str, error: bool) {
         if let Some(ui) = self.ui() {
+            ui.global::<Ui>().set_banner_action("".into());
             ui.global::<Ui>().set_banner_error(error);
             ui.global::<Ui>().set_banner_text(text.into());
         }

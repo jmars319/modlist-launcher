@@ -39,6 +39,17 @@ pub struct ScanReport {
     pub truncated: bool,
 }
 
+impl ScanReport {
+    /// Candidates worth announcing at startup: the recommended ones (portable,
+    /// readable, not yet added) that the user has not dismissed before.
+    pub fn new_modlists(&self, dismissed: &[PathBuf]) -> Vec<&Candidate> {
+        self.candidates
+            .iter()
+            .filter(|c| c.recommended() && !dismissed.iter().any(|d| crate::paths::same_path(d, &c.exe)))
+            .collect()
+    }
+}
+
 pub fn scan(roots: &[PathBuf], options: ScanOptions, already_added: impl Fn(&Path) -> bool) -> ScanReport {
     let mut report = ScanReport::default();
     let mut visited = 0usize;
@@ -164,6 +175,48 @@ mod tests {
         let other = report.candidates.iter().find(|c| c.exe == global.join("ModOrganizer.exe")).unwrap();
         assert!(!other.recommended());
         assert!(!report.truncated);
+    }
+
+    #[test]
+    fn new_modlists_skip_added_dismissed_and_non_portable() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().join("Modlists");
+        let fresh = portable(
+            &root,
+            "Fresh List",
+            "[General]
+gameName=Skyrim Special Edition
+",
+            &[],
+        );
+        let added = portable(
+            &root,
+            "Added List",
+            "[General]
+gameName=Fallout 4
+",
+            &[],
+        );
+        let dismissed = portable(
+            &root,
+            "Dismissed List",
+            "[General]
+gameName=Starfield
+",
+            &[],
+        );
+        let global = root.join("Global MO2");
+        std::fs::create_dir_all(&global).unwrap();
+        std::fs::write(global.join("ModOrganizer.exe"), b"").unwrap();
+
+        let report =
+            scan(std::slice::from_ref(&root), ScanOptions::default(), |p| crate::paths::same_path(p, &added.exe));
+        assert_eq!(report.candidates.len(), 4);
+        // Dismissed paths match regardless of case, as Windows paths do.
+        let dismissed_paths = vec![PathBuf::from(dismissed.exe.to_string_lossy().to_uppercase())];
+        let found: Vec<_> = report.new_modlists(&dismissed_paths).iter().map(|c| c.exe.clone()).collect();
+        assert_eq!(found, vec![fresh.exe.clone()]);
+        assert_eq!(report.new_modlists(&[]).len(), 2);
     }
 
     #[test]
