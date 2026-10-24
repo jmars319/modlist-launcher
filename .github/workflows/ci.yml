@@ -61,6 +61,11 @@ jobs:
         shell: pwsh
         run: ./scripts/smoke-arrow-keys.ps1
 
+      - name: Smoke test, real mouse clicks
+        if: ${{ !cancelled() }}
+        shell: pwsh
+        run: ./scripts/smoke-mouse-clicks.ps1
+
       - name: Collect smoke screenshots
         if: failure()
         shell: pwsh
