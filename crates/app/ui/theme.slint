@@ -88,12 +88,15 @@ export component Button inherits Rectangle {
             reject
         }
     }
-    // Above the FocusScope: a FocusScope takes the first press to gain focus
-    // and would swallow the click.
+    // Above the FocusScope, which would otherwise take the first press to gain
+    // focus and swallow the click; the click handler focuses it instead.
     touch := TouchArea {
         enabled: root.enabled;
         mouse-cursor: pointer;
-        clicked => { root.clicked(); }
+        clicked => {
+            focus.focus();
+            root.clicked();
+        }
     }
     Rectangle {
         visible: focus.has-focus;
@@ -149,12 +152,15 @@ export component Switch inherits Rectangle {
             reject
         }
     }
-    // Above the FocusScope: a FocusScope takes the first press to gain focus
-    // and would swallow the click.
+    // Above the FocusScope, which would otherwise take the first press to gain
+    // focus and swallow the click; the click handler focuses it instead.
     touch := TouchArea {
         enabled: root.enabled;
         mouse-cursor: pointer;
-        clicked => { root.toggle(); }
+        clicked => {
+            focus.focus();
+            root.toggle();
+        }
     }
     HorizontalLayout {
         spacing: 10px;
@@ -232,12 +238,15 @@ export component CheckBox inherits Rectangle {
             reject
         }
     }
-    // Above the FocusScope: a FocusScope takes the first press to gain focus
-    // and would swallow the click.
+    // Above the FocusScope, which would otherwise take the first press to gain
+    // focus and swallow the click; the click handler focuses it instead.
     touch := TouchArea {
         enabled: root.enabled;
         mouse-cursor: pointer;
-        clicked => { root.toggle(); }
+        clicked => {
+            focus.focus();
+            root.toggle();
+        }
     }
     HorizontalLayout {
         spacing: 8px;
@@ -329,8 +338,8 @@ export component ComboBox inherits Rectangle {
             reject
         }
     }
-    // Above the FocusScope: a FocusScope takes the first press to gain focus
-    // and would swallow the click.
+    // Above the FocusScope, which would otherwise take the first press to gain
+    // focus and swallow the click; the click handler focuses it instead.
     touch := TouchArea {
         enabled: root.enabled;
         mouse-cursor: pointer;
@@ -549,12 +558,15 @@ export component ActionItem inherits Rectangle {
             reject
         }
     }
-    // Above the FocusScope: a FocusScope takes the first press to gain focus
-    // and would swallow the click.
+    // Above the FocusScope, which would otherwise take the first press to gain
+    // focus and swallow the click; the click handler focuses it instead.
     touch := TouchArea {
         enabled: root.enabled;
         mouse-cursor: pointer;
-        clicked => { root.clicked(); }
+        clicked => {
+            focus.focus();
+            root.clicked();
+        }
     }
     Rectangle {
         visible: focus.has-focus;

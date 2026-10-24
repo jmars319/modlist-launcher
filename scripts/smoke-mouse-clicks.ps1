@@ -80,6 +80,9 @@ try {
     $before = [bool](Setting)
     Click 'Close the launcher after starting a modlist'
     Check 'switch: toggles and saves' ([bool](Setting) -ne $before)
+    # A click must also move keyboard focus, so Space and Tab continue from it.
+    $switch = All | Where-Object { $_.Current.Name -eq 'Close the launcher after starting a modlist' } | Select-Object -First 1
+    Check 'switch: click gives it keyboard focus' ([bool]$switch -and $switch.Current.HasKeyboardFocus)
     Click 'Done'
     Check 'button: Done closes the sheet' (-not (Has 'Done'))
     Click 'More actions for Click List'
