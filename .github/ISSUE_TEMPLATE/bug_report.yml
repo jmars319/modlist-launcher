@@ -1,0 +1,54 @@
+name: Bug report
+description: Something in Modlist Launcher does not work as expected.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. If the problem could harm someone's files, Steam settings or PC, report it privately instead: **Security > Report a vulnerability**.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead. Screenshots help.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Add a modlist with...
+        2. Press Play...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Launcher version
+      description: Shown at the bottom of Settings.
+      placeholder: "0.1.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: started-from
+    attributes:
+      label: Started from
+      options:
+        - The launcher window
+        - Steam's Play button
+        - A desktop or Start menu shortcut
+        - The command line
+    validations:
+      required: true
+  - type: input
+    id: setup
+    attributes:
+      label: Windows version, MO2 version and modlist
+      placeholder: Windows 11 24H2, MO2 2.5.2, Project Ultrapunk (Wabbajack)
+  - type: textarea
+    id: log
+    attributes:
+      label: launcher.log
+      description: From the launcher's data folder (Settings > Open Folder). Remove anything private first.
+      render: text

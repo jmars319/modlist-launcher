@@ -110,6 +110,10 @@ This builds in `dist/staging` and writes the zip, installer and `SHA256SUMS.txt`
 | `scripts/` | Packaging and icon generation. |
 | `docs/` | Safety model, Steam setup, architecture decisions. |
 
+## Contributing and security
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). To report something that could harm a user's files, Steam settings or PC, use the private route in [SECURITY.md](SECURITY.md).
+
 ## License
 
 GPL-3.0-only. See [LICENSE](LICENSE). The embedded Geist and Geist Mono fonts are under the SIL Open Font License 1.1 ([assets/fonts/OFL.txt](assets/fonts/OFL.txt)). Mod Organizer 2 is also GPL-3.0. This launcher only starts it as a separate program and does not include any of its code.
