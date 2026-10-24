@@ -29,7 +29,12 @@ Slint's `cupertino` style cannot carry this on its own. Its `Palette` is read-on
 - **Status colours:** emerald for ready, violet for running, amber for warning and rose for danger, as on the site.
 - **Remaining Cupertino widgets:** `LineEdit` and `ScrollView` still come from `cupertino`. They have little accent, and their focus ring follows the Windows accent colour.
 - **App icon:** keeps its stacked-cards-and-play symbol, redrawn on the Vaexil canvas with the mark's blue-to-magenta. The Vaexil "V" itself stays the brand mark rather than this app's icon, so Vaexil apps stay distinguishable in the taskbar.
-- **Fonts:** Geist (OFL) is the intended typeface. `Theme.font-sans` names it, but it is not embedded yet. Slint needs TTF/OTF, and the only local copies are WOFF2. Until the files are added under `assets/fonts/` with their licence, text uses the Windows default font.
+- **Fonts:** Geist and Geist Mono (OFL-1.1), embedded in the exe.
+  - The source is the official vercel/geist-font v1.8.2 release (fonts version 1.802).
+  - Only the static TTFs the UI uses are included: Geist Regular, SemiBold and Bold, plus Geist Mono Regular. They are in `assets/fonts/` with `OFL.txt`.
+  - `app.slint` imports them, and every window sets `default-font-family: Theme.font-sans`.
+  - The exe grows by about 575 KB; idle memory is unchanged.
+  - The OFL text ships in `THIRD-PARTY-LICENSES.txt` in the zip and the installer.
 
 ## Consequences
 

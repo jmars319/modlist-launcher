@@ -1,3 +1,8 @@
+// Geist (OFL-1.1, assets/fonts/OFL.txt), embedded so text matches vaexil.tv.
+import "../../../assets/fonts/Geist-Regular.ttf";
+import "../../../assets/fonts/Geist-SemiBold.ttf";
+import "../../../assets/fonts/Geist-Bold.ttf";
+import "../../../assets/fonts/GeistMono-Regular.ttf";
 import { ScrollView, Palette } from "std-widgets.slint";
 import { Button, Theme, Message } from "theme.slint";
 import { CardStatus, InstallCard, ScanRow, Ui, EditState, ScanState, SteamState } from "state.slint";
@@ -79,6 +84,7 @@ export component AppWindow inherits Window {
     min-height: 460px;
     background: Theme.window-background;
     default-font-size: 13px;
+    default-font-family: Theme.font-sans;
 
     property <bool> modal: Ui.sheet != "";
     property <length> gutter: 24px;
@@ -256,6 +262,7 @@ export component SteamChooser inherits Window {
     width: 440px;
     background: Theme.surface;
     default-font-size: 13px;
+    default-font-family: Theme.font-sans;
     forward-focus: scope;
 
     scope := FocusScope {
@@ -320,6 +327,7 @@ export component MessageWindow inherits Window {
     width: 440px;
     background: Theme.surface;
     default-font-size: 13px;
+    default-font-family: Theme.font-sans;
     forward-focus: ok-button;
 
     VerticalLayout {
@@ -363,6 +371,7 @@ export component PromptWindow inherits Window {
     width: 460px;
     background: Theme.surface;
     default-font-size: 13px;
+    default-font-family: Theme.font-sans;
     forward-focus: primary-button;
 
     VerticalLayout {
@@ -408,6 +417,7 @@ export component WaitWindow inherits Window {
     width: 440px;
     background: Theme.surface;
     default-font-size: 13px;
+    default-font-family: Theme.font-sans;
     forward-focus: cancel-button;
 
     VerticalLayout {

@@ -111,4 +111,4 @@ This builds in `dist/staging` and writes the zip, installer and `SHA256SUMS.txt`
 
 ## License
 
-GPL-3.0-only. See [LICENSE](LICENSE). Mod Organizer 2 is also GPL-3.0. This launcher only starts it as a separate program and does not include any of its code.
+GPL-3.0-only. See [LICENSE](LICENSE). The embedded Geist and Geist Mono fonts are under the SIL Open Font License 1.1 ([assets/fonts/OFL.txt](assets/fonts/OFL.txt)). Mod Organizer 2 is also GPL-3.0. This launcher only starts it as a separate program and does not include any of its code.

@@ -46,9 +46,11 @@ export global Theme {
     // Shape and type
     out property <length> radius: 16px;
     out property <length> control-radius: 12px;
-    // Not embedded yet, so text uses the Windows default font (ADR 0002).
+    // Geist and Geist Mono (OFL). The app embeds the TTFs with `import`
+    // lines in its root .slint file; without them text falls back to the
+    // system font.
     out property <string> font-sans: "Geist";
-    out property <string> font-mono: "Consolas";
+    out property <string> font-mono: "Geist Mono";
 }
 
 /// A pill button. `primary` fills it with the accent.

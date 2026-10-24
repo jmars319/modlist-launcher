@@ -47,6 +47,13 @@ foreach ($pkg in ($meta.packages | Sort-Object name, version)) {
     }
     [void]$notices.AppendLine('')
 }
+# Fonts embedded in the exe (assets/fonts).
+[void]$notices.AppendLine(('=' * 78))
+[void]$notices.AppendLine('Geist and Geist Mono fonts 1.802 - OFL-1.1')
+[void]$notices.AppendLine('https://github.com/vercel/geist-font')
+[void]$notices.AppendLine('')
+[void]$notices.AppendLine('--- OFL.txt')
+[void]$notices.AppendLine((Get-Content (Join-Path $root 'assets\fonts\OFL.txt') -Raw))
 Set-Content -Path (Join-Path $staging 'THIRD-PARTY-LICENSES.txt') -Value $notices.ToString() -Encoding utf8
 
 $zip = Join-Path $dist "ModlistLauncher-$version-portable.zip"
