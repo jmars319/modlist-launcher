@@ -25,23 +25,27 @@ function Draw-Icon([int]$size) {
     $g.Clear([System.Drawing.Color]::Transparent)
     $s = $size / 256.0
 
+    # Vaexil: the #05070d canvas with the mark's blue-to-magenta.
+    $blue = [System.Drawing.Color]::FromArgb(255, 47, 123, 255)
+    $magenta = [System.Drawing.Color]::FromArgb(255, 255, 63, 216)
+    $diag = { param($a, $b) New-Object System.Drawing.Drawing2D.LinearGradientBrush (
+        (New-Object System.Drawing.PointF 0, 0), (New-Object System.Drawing.PointF $size, $size), $a, $b) }
+
     $bg = New-RoundedRect (8 * $s) (8 * $s) (240 * $s) (240 * $s) (54 * $s)
-    $grad = New-Object System.Drawing.Drawing2D.LinearGradientBrush (
-        (New-Object System.Drawing.PointF 0, 0),
-        (New-Object System.Drawing.PointF $size, $size),
-        [System.Drawing.Color]::FromArgb(255, 94, 92, 230),
-        [System.Drawing.Color]::FromArgb(255, 10, 132, 255))
-    $g.FillPath($grad, $bg)
+    $g.FillPath((& $diag ([System.Drawing.Color]::FromArgb(255, 11, 22, 40)) ([System.Drawing.Color]::FromArgb(255, 5, 7, 13))), $bg)
+    $edge = New-Object System.Drawing.Pen ((& $diag $blue $magenta), [Math]::Max(1, 5 * $s))
+    $g.DrawPath($edge, $bg)
 
     $cards = @(
-        @{ X = 78; Y = 52; A = 70 },
-        @{ X = 64; Y = 70; A = 130 },
+        @{ X = 78; Y = 52; A = 90 },
+        @{ X = 64; Y = 70; A = 160 },
         @{ X = 50; Y = 88; A = 255 }
     )
     foreach ($c in $cards) {
         $rect = New-RoundedRect ($c.X * $s) ($c.Y * $s) (128 * $s) (116 * $s) (18 * $s)
-        $brush = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb($c.A, 255, 255, 255))
-        $g.FillPath($brush, $rect)
+        $tint = if ($c.A -eq 255) { [System.Drawing.Color]::FromArgb(255, 248, 250, 252) }
+                else { [System.Drawing.Color]::FromArgb($c.A, 103, 232, 249) }
+        $g.FillPath((New-Object System.Drawing.SolidBrush $tint), $rect)
     }
 
     $tri = New-Object System.Drawing.Drawing2D.GraphicsPath
@@ -50,7 +54,9 @@ function Draw-Icon([int]$size) {
         (New-Object System.Drawing.PointF (98 * $s), (174 * $s)),
         (New-Object System.Drawing.PointF (146 * $s), (146 * $s))
     ))
-    $g.FillPath((New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(255, 70, 90, 235))), $tri)
+    $g.FillPath((New-Object System.Drawing.Drawing2D.LinearGradientBrush (
+        (New-Object System.Drawing.PointF (94 * $s), (118 * $s)),
+        (New-Object System.Drawing.PointF (150 * $s), (174 * $s)), $blue, $magenta)), $tri)
     $g.Dispose()
     $bmp
 }

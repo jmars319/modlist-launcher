@@ -1,5 +1,5 @@
-import { Button, ScrollView, Palette } from "std-widgets.slint";
-import { Theme, Message } from "theme.slint";
+import { ScrollView, Palette } from "std-widgets.slint";
+import { Button, Theme, Message } from "theme.slint";
 import { CardStatus, InstallCard, ScanRow, Ui, EditState, ScanState, SteamState } from "state.slint";
 import { Card } from "card.slint";
 import { ActionsSheet, ConfirmSheet, EditSheet, ScanSheet, SettingsSheet, SteamSheet } from "sheets.slint";
@@ -11,9 +11,9 @@ component Banner inherits Rectangle {
     in property <bool> error;
     callback dismiss();
     border-radius: 10px;
-    background: (error ? Theme.danger : Palette.accent-background).transparentize(86%);
+    background: (error ? Theme.danger : Theme.accent).transparentize(88%);
     border-width: 1px;
-    border-color: (error ? Theme.danger : Palette.accent-background).transparentize(55%);
+    border-color: (error ? Theme.danger : Theme.accent).transparentize(55%);
     HorizontalLayout {
         padding: 10px;
         padding-left: 16px;

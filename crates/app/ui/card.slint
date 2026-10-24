@@ -1,5 +1,4 @@
-import { Button, ComboBox, Palette } from "std-widgets.slint";
-import { Theme } from "theme.slint";
+import { Button, ComboBox, Theme } from "theme.slint";
 import { CardStatus, InstallCard, Ui } from "state.slint";
 
 component StatusPill inherits Rectangle {
@@ -11,7 +10,7 @@ component StatusPill inherits Rectangle {
     height: 24px;
     width: row.preferred-width + 20px;
     border-radius: self.height / 2;
-    background: Theme.dark ? #000000b3 : #ffffffeb;
+    background: Theme.dark ? #05070dcc : #ffffffeb;
     accessible-role: none;
     row := HorizontalLayout {
         alignment: center;
@@ -27,7 +26,7 @@ component StatusPill inherits Rectangle {
             text: root.label;
             font-size: 12px;
             font-weight: 600;
-            color: Theme.dark ? #ffffff : #1c1c1e;
+            color: Theme.dark ? #f8fafc : #0b1220;
             vertical-alignment: center;
             accessible-role: none;
         }
@@ -41,7 +40,9 @@ component SetupChip inherits Rectangle {
     height: 20px;
     width: row.preferred-width + 16px;
     border-radius: self.height / 2;
-    background: Theme.dark ? #ffffff14 : #0000000d;
+    background: Theme.hover;
+    border-width: 1px;
+    border-color: Theme.separator;
     accessible-role: none;
     row := HorizontalLayout {
         alignment: center;
@@ -67,7 +68,7 @@ component SetupChip inherits Rectangle {
 component Artwork inherits Rectangle {
     in property <InstallCard> card;
     clip: true;
-    background: @linear-gradient(135deg, Theme.dark ? #3a3a3c : #e5e5ea 0%, Theme.dark ? #232325 : #f7f7fa 100%);
+    background: @linear-gradient(135deg, Theme.dark ? #0b1d33 : #dbeafe 0%, Theme.dark ? #22102e : #f5e8ff 100%);
     accessible-role: none;
     if card.has-hero: Image {
         width: parent.width;
@@ -142,7 +143,7 @@ export component Card inherits Rectangle {
     border-color: Theme.surface-border;
     drop-shadow-blur: hover.has-hover ? 26px : 14px;
     drop-shadow-offset-y: hover.has-hover ? 8px : 3px;
-    drop-shadow-color: Theme.dark ? #00000080 : #0000001c;
+    drop-shadow-color: Theme.shadow;
     animate drop-shadow-blur, drop-shadow-offset-y { duration: 160ms; easing: ease-out; }
 
     accessible-role: groupbox;
