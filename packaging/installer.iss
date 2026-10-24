@@ -45,8 +45,9 @@ Source: "{#SourceDir}\README.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#SourceDir}\THIRD-PARTY-LICENSES.txt"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
-Name: "{autoprograms}\Modlist Launcher"; Filename: "{app}\modlist-launcher.exe"
-Name: "{autodesktop}\Modlist Launcher"; Filename: "{app}\modlist-launcher.exe"; Tasks: desktopicon
+; An explicit IconFilename, so Windows refreshes the icon when the exe changes.
+Name: "{autoprograms}\Modlist Launcher"; Filename: "{app}\modlist-launcher.exe"; IconFilename: "{app}\modlist-launcher.exe"
+Name: "{autodesktop}\Modlist Launcher"; Filename: "{app}\modlist-launcher.exe"; IconFilename: "{app}\modlist-launcher.exe"; Tasks: desktopicon
 
 [Run]
 Filename: "{app}\modlist-launcher.exe"; Description: "Open Modlist Launcher"; Flags: nowait postinstall skipifsilent
