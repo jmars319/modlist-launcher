@@ -211,7 +211,8 @@ fn shortcut_round_trip() {
     };
     create_shortcut(&path, &s, false).unwrap();
     let (got_target, args) = read_shortcut(&path).unwrap();
-    assert!(modlist_core::paths::same_path(&got_target, &target));
+    // The shell may hand back the long form of an 8.3 temp path.
+    assert_eq!(std::fs::canonicalize(&got_target).unwrap(), std::fs::canonicalize(&target).unwrap());
     assert_eq!(modlist_core::cli::shortcut_target(&got_target, &args), Some("5f0c".into()));
     let _ = std::fs::remove_dir_all(&dir);
 }
