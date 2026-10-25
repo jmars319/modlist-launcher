@@ -132,16 +132,20 @@ impl Controller {
     }
 
     /// Ends the stuck MO2 after checking that `pid` is still this
-    /// installation's MO2 and still has no window.
+    /// installation's MO2 and still counts as stuck: windowless without a
+    /// break for the whole limit, not merely windowless right now (a healthy
+    /// MO2 has no window for a moment while it shuts down).
     fn end_stuck_mo2(&mut self, id: Uuid, pid: u32) {
         self.close_sheet();
         let Some(inst) = self.state.config.find(id).cloned() else { return };
+        self.running = crate::state::running_mo2();
+        self.observe_mo2_windows();
         let same = crate::platform::processes::image_path(pid)
             .is_some_and(|p| modlist_core::paths::same_path(&p, &inst.exe_path));
         if !same {
             self.banner("That Mod Organizer has already closed.", false);
-        } else if !crate::platform::other_windows::visible_top_level(pid).is_empty() {
-            self.banner("Mod Organizer has a window again, so it was left running.", false);
+        } else if self.mo2_windows.stuck_for(pid, std::time::Instant::now()).is_none() {
+            self.banner("Mod Organizer showed a window again, so it was left running.", false);
         } else {
             match crate::platform::processes::end(pid) {
                 Ok(()) => {
