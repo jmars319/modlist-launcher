@@ -5,7 +5,9 @@
 //! portable shortcut matches any portable instance. Starting install B while
 //! install A runs would therefore act inside A, so the launcher blocks it.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 
 use crate::config::Installation;
 use crate::mo2::MO2_EXE;
@@ -156,6 +158,49 @@ pub fn is_mo2_wait_dialog<S: AsRef<str>>(texts: &[S], game_exe_name: &str, game_
     texts.iter().any(|t| t.as_ref().lines().any(|line| line.trim().eq_ignore_ascii_case(&entry)))
 }
 
+/// How long MO2 may run with no visible window before the launcher treats it as
+/// stuck. A working MO2 always shows something: its splash, its main window,
+/// or (during a Steam Play launch) the minimized "waiting" dialog.
+pub const MO2_WINDOWLESS_LIMIT: Duration = Duration::from_secs(60);
+
+/// Remembers since when each MO2 process has had no visible window.
+#[derive(Debug, Default)]
+pub struct WindowlessTracker {
+    since: HashMap<u32, Instant>,
+}
+
+impl WindowlessTracker {
+    /// Records one check of `pid` at `now`.
+    pub fn observe(&mut self, pid: u32, has_window: bool, now: Instant) {
+        if has_window {
+            self.since.remove(&pid);
+        } else {
+            self.since.entry(pid).or_insert(now);
+        }
+    }
+
+    /// Forgets processes that are no longer running.
+    pub fn retain(&mut self, alive: impl Fn(u32) -> bool) {
+        self.since.retain(|pid, _| alive(*pid));
+    }
+
+    /// How long `pid` has had no window, once that exceeds the limit.
+    pub fn stuck_for(&self, pid: u32, now: Instant) -> Option<Duration> {
+        self.since.get(&pid).map(|t| now.saturating_duration_since(*t)).filter(|d| *d >= MO2_WINDOWLESS_LIMIT)
+    }
+}
+
+/// "3 minutes", "2 hours": how long MO2 has been stuck, for the card.
+pub fn describe_duration(d: Duration) -> String {
+    let minutes = d.as_secs() / 60;
+    match minutes {
+        0 | 1 => "a minute".into(),
+        2..=59 => format!("{minutes} minutes"),
+        60..=119 => "an hour".into(),
+        _ => format!("{} hours", minutes / 60),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -268,5 +313,31 @@ mod tests {
         let running = [proc(5, Some(r"C:\Games\Cyberpunk 2077\bin\x64\Cyberpunk2077.exe"))];
         assert_eq!(is_running(Path::new(r"c:/games/cyberpunk 2077/bin/x64/cyberpunk2077.exe"), &running), Some(5));
         assert_eq!(is_running(Path::new(r"C:\x.exe"), &running), None);
+    }
+
+    #[test]
+    fn mo2_without_a_window_is_stuck_after_the_limit() {
+        let t0 = Instant::now();
+        let mut w = WindowlessTracker::default();
+        w.observe(7, false, t0);
+        assert_eq!(w.stuck_for(7, t0 + Duration::from_secs(59)), None);
+        w.observe(7, false, t0 + Duration::from_secs(30));
+        assert_eq!(w.stuck_for(7, t0 + Duration::from_secs(90)), Some(Duration::from_secs(90)));
+        // A window seen again resets it.
+        w.observe(7, true, t0 + Duration::from_secs(100));
+        assert_eq!(w.stuck_for(7, t0 + Duration::from_secs(400)), None);
+        // Unknown and exited processes are never stuck.
+        assert_eq!(w.stuck_for(8, t0 + Duration::from_secs(400)), None);
+        w.observe(9, false, t0);
+        w.retain(|pid| pid != 9);
+        assert_eq!(w.stuck_for(9, t0 + Duration::from_secs(400)), None);
+    }
+
+    #[test]
+    fn describes_how_long() {
+        assert_eq!(describe_duration(Duration::from_secs(70)), "a minute");
+        assert_eq!(describe_duration(Duration::from_secs(5 * 60 + 10)), "5 minutes");
+        assert_eq!(describe_duration(Duration::from_secs(61 * 60)), "an hour");
+        assert_eq!(describe_duration(Duration::from_secs(14 * 3600 + 120)), "14 hours");
     }
 }

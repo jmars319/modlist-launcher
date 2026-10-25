@@ -19,6 +19,11 @@ pub enum Pending {
         id: Option<Uuid>,
         place: ShortcutPlace,
     },
+    /// End an MO2 that has run with no window for too long.
+    EndStuckMo2 {
+        id: Uuid,
+        pid: u32,
+    },
 }
 
 pub fn wire(ui: &AppWindow, c: &Shared) {
@@ -84,6 +89,7 @@ pub fn wire(ui: &AppWindow, c: &Shared) {
                 Some(Pending::Remove(id)) => ctl.remove(id, true),
                 Some(Pending::RemoveSkippingSteam(id)) => ctl.remove(id, false),
                 Some(Pending::ReplaceShortcut { id, place }) => ctl.shortcut(id, place, true),
+                Some(Pending::EndStuckMo2 { id, pid }) => ctl.end_stuck_mo2(id, pid),
                 None => ctl.close_sheet(),
             }
         });
@@ -113,6 +119,45 @@ impl Controller {
         g.set_confirm_button(button.into());
         g.set_confirm_destructive(destructive);
         g.set_sheet("confirm".into());
+    }
+
+    pub fn ask_end_stuck_mo2(&mut self, id: Uuid, pid: u32, stuck: std::time::Duration) {
+        let Some(inst) = self.state.config.find(id) else { return };
+        let text = format!(
+            "Mod Organizer for {} has been running for {} with no window, so it cannot be closed normally. End it, as Task Manager's End task would? MO2 saves your mod order and settings as you change them, so normally nothing is lost.",
+            inst.name,
+            modlist_core::process::describe_duration(stuck),
+        );
+        self.confirm(Pending::EndStuckMo2 { id, pid }, "End Mod Organizer?", &text, "End MO2", true);
+    }
+
+    /// Ends the stuck MO2 after checking that `pid` is still this
+    /// installation's MO2 and still counts as stuck: windowless without a
+    /// break for the whole limit, not merely windowless right now (a healthy
+    /// MO2 has no window for a moment while it shuts down).
+    fn end_stuck_mo2(&mut self, id: Uuid, pid: u32) {
+        self.close_sheet();
+        let Some(inst) = self.state.config.find(id).cloned() else { return };
+        self.running = crate::state::running_mo2();
+        self.observe_mo2_windows();
+        let same = crate::platform::processes::image_path(pid)
+            .is_some_and(|p| modlist_core::paths::same_path(&p, &inst.exe_path));
+        if !same {
+            self.banner("That Mod Organizer has already closed.", false);
+        } else if self.mo2_windows.stuck_for(pid, std::time::Instant::now()).is_none() {
+            self.banner("Mod Organizer showed a window again, so it was left running.", false);
+        } else {
+            match crate::platform::processes::end(pid) {
+                Ok(()) => {
+                    self.state.log(&format!("ended stuck MO2: {} (pid {pid})", inst.name));
+                    self.banner(&format!("Ended the stuck Mod Organizer for {}.", inst.name), false);
+                }
+                Err(e) => self.banner(&format!("Could not end Mod Organizer: {e}"), true),
+            }
+        }
+        self.running = crate::state::running_mo2();
+        self.observe_mo2_windows();
+        self.refresh_cards();
     }
 
     fn ask_remove(&mut self, id: Uuid) {
