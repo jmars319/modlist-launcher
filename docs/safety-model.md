@@ -49,10 +49,15 @@ When it changes Steam's `localconfig.vdf`, the launcher:
 - During a Steam Play launch, the launcher minimizes MO2's "waiting on an application to close before exiting" dialog once, without taking focus from the game.
   - It finds the dialog by its line for this session's game process, such as `Cyberpunk2077.exe (32576)`, read through UI Automation. Any other MO2 window never matches.
   - Only the window's minimized state changes. Nothing is clicked, MO2 still closes itself when the game exits, and restoring the dialog works as usual.
+- **Ending a stuck MO2:** the one process the launcher ever ends is an installation's own `ModOrganizer.exe`, and only when all of these hold:
+  - it has run for 60 seconds or more with no visible window (a minimized window counts as visible);
+  - you press **End MO2** on its card;
+  - you confirm.
+  Just before ending it, the launcher checks again that the process ID still belongs to that installation's `ModOrganizer.exe` and still has no window. Otherwise it leaves the process alone. It needs no administrator rights, and each end is logged.
 
 ## Not done, by design
 
 - No network access. CI's dependency policy bans HTTP and TLS crates.
 - No telemetry, accounts or update checks.
 - No changes to MO2 settings, profiles, mods, downloads, overwrite or Wabbajack files.
-- No closing or killing of other programs.
+- No closing or killing of other programs. The only exception is a stuck MO2 you confirm ending (see Processes).

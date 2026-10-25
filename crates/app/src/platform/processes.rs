@@ -7,8 +7,8 @@ use windows::Win32::System::Diagnostics::ToolHelp::{
     CreateToolhelp32Snapshot, PROCESSENTRY32W, Process32FirstW, Process32NextW, TH32CS_SNAPPROCESS,
 };
 use windows::Win32::System::Threading::{
-    OpenProcess, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SYNCHRONIZE,
-    QueryFullProcessImageNameW, WaitForSingleObject,
+    OpenProcess, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SYNCHRONIZE, PROCESS_TERMINATE,
+    QueryFullProcessImageNameW, TerminateProcess, WaitForSingleObject,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     EnumWindows, GetWindowThreadProcessId, IsIconic, IsWindowVisible, SW_RESTORE, SetForegroundWindow, ShowWindow,
@@ -69,6 +69,20 @@ pub fn wait_for_exit(pid: u32, timeout: Option<Duration>) -> bool {
         let ms = timeout.map_or(u32::MAX, |t| t.as_millis().min(u128::from(u32::MAX - 1)) as u32);
         WaitForSingleObject(h.0, ms) == WAIT_OBJECT_0
     }
+}
+
+/// Ends a process, as Task Manager's End task does, and waits up to five
+/// seconds for it to go.
+pub fn end(pid: u32) -> Result<(), String> {
+    // SAFETY: a handle with only terminate and synchronize rights, closed on drop.
+    unsafe {
+        let h = OwnedHandle(OpenProcess(PROCESS_TERMINATE | PROCESS_SYNCHRONIZE, false, pid).map_err(|e| e.message())?);
+        TerminateProcess(h.0, 1).map_err(|e| e.message())?;
+        if WaitForSingleObject(h.0, 5_000) != WAIT_OBJECT_0 {
+            return Err("it did not exit within 5 seconds".into());
+        }
+    }
+    Ok(())
 }
 
 /// Brings a visible top-level window of `pid` to the front.

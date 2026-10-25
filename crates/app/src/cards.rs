@@ -16,6 +16,9 @@ pub struct CardInput<'a> {
     pub all: &'a [Installation],
     pub starting: bool,
     pub game: GameState,
+    /// How long this installation's MO2 has run with no window, once it
+    /// counts as stuck.
+    pub mo2_stuck: Option<std::time::Duration>,
     pub desktop_shortcut: bool,
     pub start_menu_shortcut: bool,
     pub profiles: ModelRc<SharedString>,
@@ -59,6 +62,7 @@ pub fn build(input: CardInput<'_>) -> InstallCard {
         all,
         starting,
         game,
+        mo2_stuck,
         desktop_shortcut,
         start_menu_shortcut,
         profiles,
@@ -131,6 +135,22 @@ pub fn build(input: CardInput<'_>) -> InstallCard {
         return card;
     }
     match gate {
+        Gate::SameInstanceRunning { .. } if mo2_stuck.is_some() => {
+            let how_long = process::describe_duration(mo2_stuck.unwrap_or_default());
+            card.status = CardStatus::Attention;
+            card.status_text = "Not responding".into();
+            card.detail = format!(
+                "Mod Organizer has been running for {how_long} with no window, so it is probably stuck closing. End MO2 stops it."
+            )
+            .into();
+            card.detail_is_error = true;
+            card.can_play = !has_play_exe;
+            card.can_open = true;
+            card.open_label = "End MO2".into();
+            if !has_play_exe {
+                card.play_label = "End MO2".into();
+            }
+        }
         Gate::SameInstanceRunning { .. } => {
             card.status = CardStatus::Running;
             card.status_text = "Running".into();
@@ -200,6 +220,7 @@ mod tests {
             all,
             starting: false,
             game: GameState::NotRunning,
+            mo2_stuck: None,
             desktop_shortcut: false,
             start_menu_shortcut: false,
             profiles: ModelRc::default(),
@@ -234,6 +255,39 @@ mod tests {
         assert_eq!(c.status, CardStatus::Running);
         assert_eq!(c.open_label, "Show MO2");
         assert!(c.can_play && c.can_open);
+    }
+
+    #[test]
+    fn stuck_mo2_offers_end_instead_of_play() {
+        let all = installs();
+        let running = [mo2(r"C:\Modlists\ProjectUltrapunk\ModOrganizer.exe")];
+        let inspection = Inspection { install: None, issues: vec![] };
+        let input = |inst, stuck| CardInput {
+            inst,
+            inspection: Some(&inspection),
+            art: Art::default(),
+            running: &running,
+            all: &all,
+            starting: false,
+            game: GameState::NotRunning,
+            mo2_stuck: stuck,
+            desktop_shortcut: false,
+            start_menu_shortcut: false,
+            profiles: ModelRc::default(),
+        };
+        // Ultrapunk's Play runs a game, so Play is disabled and Open becomes End.
+        let c = build(input(&all[0], Some(std::time::Duration::from_secs(14 * 3600))));
+        assert_eq!(c.status, CardStatus::Attention);
+        assert_eq!(c.status_text, "Not responding");
+        assert!(c.detail.contains("14 hours with no window"), "{}", c.detail);
+        assert!(!c.can_play && c.can_open);
+        assert_eq!(c.open_label, "End MO2");
+        // A modlist whose Play only opens MO2 gets End MO2 on the Play button.
+        let mut open_only = all[0].clone();
+        open_only.play_action = PlayAction::OpenMo2;
+        let c = build(input(&open_only, Some(std::time::Duration::from_secs(120))));
+        assert_eq!(c.play_label, "End MO2");
+        assert!(c.can_play);
     }
 
     #[test]
@@ -285,6 +339,7 @@ mod tests {
             all,
             starting: false,
             game,
+            mo2_stuck: None,
             desktop_shortcut: false,
             start_menu_shortcut: false,
             profiles: ModelRc::default(),

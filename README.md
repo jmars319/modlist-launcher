@@ -18,6 +18,7 @@ Modlist Launcher is an independent project. It is not affiliated with the Mod Or
 - **Safe one-at-a-time launching.** Mod Organizer allows only one running instance on the whole PC.
   - Starting a second, different installation would hand its request to the one already open. The launcher blocks that and says which modlist to close first.
   - Pressing Open MO2 for a modlist that is already open brings its window forward.
+  - If that MO2 has run for a minute with no window at all (usually stuck closing), the card says **Not responding** and offers **End MO2**, which asks before ending it.
 - **Clear problems.** A missing exe, missing folder, removed MO2 executable or deleted profile is shown on the card, in plain language.
 - **Add, edit, rename, reorder and remove** installations. Removing one only removes it from the launcher.
 - **Scan folders** for portable MO2 installations. Scanning is read-only, and nothing is added until you tick the results and confirm.

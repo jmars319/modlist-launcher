@@ -44,6 +44,8 @@ pub struct Controller {
     pub games: Games,
     pub orphans: Vec<crate::steam_hooks::Orphan>,
     pub shortcuts: shortcuts::ShortcutIndex,
+    /// Since when each running MO2 has shown no window, to spot a stuck one.
+    pub mo2_windows: modlist_core::process::WindowlessTracker,
 }
 
 /// What each installation's game is doing, with enough history to tell a
@@ -147,6 +149,7 @@ pub fn run() -> i32 {
         games: Games::default(),
         orphans: Vec::new(),
         shortcuts: Default::default(),
+        mo2_windows: Default::default(),
     }));
     c.borrow_mut().shortcuts.refresh(true);
     c.borrow_mut().refresh_cards();
@@ -179,6 +182,7 @@ pub fn run() -> i32 {
         timer.start(slint::TimerMode::Repeated, Duration::from_secs(3), move || {
             if let Ok(mut c) = c.try_borrow_mut() {
                 c.running = running_mo2();
+                c.observe_mo2_windows();
                 c.state.inspect_all();
                 let c = &mut *c;
                 c.games.update(&c.state.config.installations, &c.state.inspections);
@@ -310,10 +314,18 @@ fn launch(c: &Shared, id: &str, mode: LaunchMode) {
     let mut ctl = c.borrow_mut();
     let Some(uuid) = parse_id(id) else { return };
     ctl.running = running_mo2();
+    ctl.observe_mo2_windows();
     ctl.state.inspect(uuid);
     let Some((inst, Some(_))) = ctl.state.get(uuid) else { return };
     let inst = inst.clone();
     let ctl = &mut *ctl;
+    // A stuck MO2 (running, no window) cannot be shown or reused; offer to end it.
+    if let Some(pid) = modlist_core::process::is_running(&inst.exe_path, &ctl.running)
+        && let Some(stuck) = ctl.mo2_windows.stuck_for(pid, std::time::Instant::now())
+    {
+        ctl.ask_end_stuck_mo2(uuid, pid, stuck);
+        return;
+    }
     ctl.games.update(&ctl.state.config.installations, &ctl.state.inspections);
     let Some(insp) = ctl.state.inspections.get(&uuid) else { return };
     let result =
@@ -348,6 +360,17 @@ impl Controller {
 
     pub fn hwnd(&self) -> Option<HWND> {
         window_hwnd(&self.ui()?)
+    }
+
+    /// Notes which running MO2 processes have a visible window.
+    pub fn observe_mo2_windows(&mut self) {
+        let now = std::time::Instant::now();
+        for p in &self.running {
+            let has_window = !crate::platform::other_windows::visible_top_level(p.pid).is_empty();
+            self.mo2_windows.observe(p.pid, has_window, now);
+        }
+        let alive: Vec<u32> = self.running.iter().map(|p| p.pid).collect();
+        self.mo2_windows.retain(|pid| alive.contains(&pid));
     }
 
     /// Re-reads which Steam games still point here without a modlist.
@@ -427,6 +450,7 @@ impl Controller {
 
     /// Updates cards in place so keyboard focus survives the periodic refresh.
     pub fn refresh_cards(&mut self) {
+        let now = std::time::Instant::now();
         let ids: Vec<Uuid> = self.state.config.installations.iter().map(|i| i.id).collect();
         let mut fresh = Vec::with_capacity(ids.len());
         for id in &ids {
@@ -447,6 +471,8 @@ impl Controller {
                 all: &self.state.config.installations,
                 starting: self.starting.contains(id),
                 game: self.games.state(*id),
+                mo2_stuck: modlist_core::process::is_running(&inst.exe_path, &self.running)
+                    .and_then(|pid| self.mo2_windows.stuck_for(pid, now)),
                 desktop_shortcut: self.shortcuts.on_desktop(&self.state.config, inst),
                 start_menu_shortcut: self.shortcuts.in_start_menu(&self.state.config, inst),
                 profiles,

@@ -54,10 +54,25 @@ try {
         @()
     }
     function Has($pattern) { [bool](All | Where-Object { $_.Current.Name -like $pattern }) }
+    # Polls for up to 5 seconds, so a slow (for example just-built, busy)
+    # machine does not fail a check that is only late.
+    function Eventually([scriptblock] $test) {
+        for ($k = 0; $k -lt 10; $k++) { if (& $test) { return $true }; Start-Sleep -Milliseconds 500 }
+        $false
+    }
     function Click($name) {
-        $e = All | Where-Object { $_.Current.Name -eq $name } | Select-Object -First 1
+        # Wait until the control is laid out where it will stay.
+        $b = $null
+        for ($k = 0; $k -lt 10; $k++) {
+            $e = All | Where-Object { $_.Current.Name -eq $name } | Select-Object -First 1
+            if ($e) {
+                $r = $e.Current.BoundingRectangle
+                if ($b -and $r -eq $b -and $r.Width -gt 0) { break }
+                $b = $r
+            }
+            Start-Sleep -Milliseconds 300
+        }
         if (-not $e) { throw "no control named '$name'" }
-        $b = $e.Current.BoundingRectangle
         $pt = New-Object SmokeClicks+POINT
         $pt.X = [int]($b.X + $b.Width / 2); $pt.Y = [int]($b.Y + $b.Height / 2)
         [SmokeClicks]::ScreenToClient($h, [ref]$pt) | Out-Null
@@ -67,7 +82,7 @@ try {
         [SmokeClicks]::PostMessage($h, 0x0201, [IntPtr]1, $l) | Out-Null   # WM_LBUTTONDOWN
         Start-Sleep -Milliseconds 60
         [SmokeClicks]::PostMessage($h, 0x0202, [IntPtr]0, $l) | Out-Null   # WM_LBUTTONUP
-        Start-Sleep -Milliseconds 1200
+        Start-Sleep -Milliseconds 600
     }
     function Check($label, [bool] $ok) {
         if (-not $ok) { $script:failed = $true }
@@ -76,21 +91,24 @@ try {
     function Setting { (Get-Content (Join-Path $data 'config.json') -Raw | ConvertFrom-Json).settings.closeAfterLaunch }
 
     Click 'Settings'
-    Check 'button: Settings opens the sheet' (Has 'Done')
+    Check 'button: Settings opens the sheet' (Eventually { Has 'Done' })
     $before = [bool](Setting)
     Click 'Close the launcher after starting a modlist'
-    Check 'switch: toggles and saves' ([bool](Setting) -ne $before)
+    Check 'switch: toggles and saves' (Eventually { [bool](Setting) -ne $before })
     # A click must also move keyboard focus, so Space and Tab continue from it.
-    $switch = All | Where-Object { $_.Current.Name -eq 'Close the launcher after starting a modlist' } | Select-Object -First 1
-    Check 'switch: click gives it keyboard focus' ([bool]$switch -and $switch.Current.HasKeyboardFocus)
+    Check 'switch: click gives it keyboard focus' (Eventually {
+        $sw = All | Where-Object { $_.Current.Name -eq 'Close the launcher after starting a modlist' } | Select-Object -First 1
+        [bool]$sw -and $sw.Current.HasKeyboardFocus
+    })
     Click 'Done'
-    Check 'button: Done closes the sheet' (-not (Has 'Done'))
+    Check 'button: Done closes the sheet' (Eventually { -not (Has 'Done') })
     Click 'More actions for Click List'
+    $null = Eventually { Has 'Edit*' }
     $edit = (All | Where-Object { $_.Current.Name -like 'Edit*' } | Select-Object -First 1)
     Check 'button: More opens the actions sheet' ([bool]$edit)
     if ($edit) {
         Click $edit.Current.Name
-        Check 'action row: Edit opens the edit sheet' (Has 'Save*')
+        Check 'action row: Edit opens the edit sheet' (Eventually { Has 'Save*' })
     }
 } finally {
     if (-not $p.HasExited) { $p.Kill(); $p.WaitForExit() }
