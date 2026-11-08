@@ -42,7 +42,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Publish
-        uses: JAMARQ-Digital-LLC/jamarq-releases/publish@eaa8917c28c1adc610876a266ef4d02f7f03b5fe
+        uses: JAMARQ-Digital-LLC/jamarq-releases/publish@f07ce6c83b69b22391f9947d44ecf2639a23c01c
         with:
           app: modlist-launcher
           kind: plain
