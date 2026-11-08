@@ -18,7 +18,12 @@ const CWD_FILE_ENV: &str = "MODLIST_TEST_CWD_FILE";
 #[ignore = "helper for fake_mo2_is_detected_and_starts_in_its_folder"]
 fn helper_fake_mo2() {
     if let Some(file) = std::env::var_os(CWD_FILE_ENV) {
-        std::fs::write(file, std::env::current_dir().unwrap().to_string_lossy().as_bytes()).unwrap();
+        // Written beside the target and renamed into place, so the parent,
+        // which waits for the file to exist, never reads it empty.
+        let file = PathBuf::from(file);
+        let partial = file.with_extension("partial");
+        std::fs::write(&partial, std::env::current_dir().unwrap().to_string_lossy().as_bytes()).unwrap();
+        std::fs::rename(&partial, &file).unwrap();
         std::thread::sleep(Duration::from_secs(8));
     }
 }
