@@ -41,6 +41,8 @@ Download from [Releases](https://github.com/jmars319/modlist-launcher/releases):
 
 Check downloads against `SHA256SUMS.txt`. Builds are not code-signed yet, so Windows SmartScreen may warn the first time.
 
+The installer is also published to [jamarq-releases](https://github.com/JAMARQ-Digital-LLC/jamarq-releases), alongside JAMARQ's other apps, as `modlist-launcher-<version>-x64-setup.exe` in the `modlist-launcher-v<version>` release. `modlist-launcher-latest/release.json` names the newest one and its SHA-256.
+
 ## Use
 
 1. **Add…** and choose a modlist's `ModOrganizer.exe`, or **Scan…** a folder such as `C:\Modlists`.
