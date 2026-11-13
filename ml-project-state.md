@@ -27,9 +27,13 @@ holds what is true right now. Created 13 Nov 2026.
 
 ## Current Structural Milestones / Active Feature Goals
 
-- Order set by the owner on 13 Nov 2026: stage 05 accessibility, then 06 first
-  public release (`v0.1.0`), 07 code signing (SignPath Foundation), 08 the
+- Order set by the owner on 13 Nov 2026: stage 05 accessibility, then 06 a
+  first GitHub Release (`v0.1.0`, unsigned, not announced), then 08 the
   "An update is available" notice.
+- Stage 07 code signing is set aside (owner, 13 Nov 2026): the launcher is a
+  tool for now and may be absorbed into Vaexil Mod Manager, or kept as a
+  separate download. No public launch planned. Revisit signing (SignPath
+  Foundation) only if it is offered on its own to other people.
 - Stage 05 scope: live Narrator (owner listens), keyboard-only flows, Windows
   contrast themes, display scales 100-200% and mixed-DPI monitors, the
   off-screen card missing from the UIA tree. Leads: Slint's ScrollView already
